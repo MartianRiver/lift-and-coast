@@ -7,9 +7,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from engineer import radiolog
 from engineer.engineer import Engineer
 from engineer.spoken import speakable
 from engineer.tts import Speaker, parse_voice
+from tests import radio_rows
 from tests.test_brief import Hub
 
 
@@ -57,15 +59,15 @@ class Streaming(unittest.TestCase):
 
 class FakeVoice:
     name = "fake"
-    def __init__(self):
-        self.rendered = []
+    def __init__(self, samples=2400):
+        self.rendered, self.samples = [], samples
     def load(self):
         pass
     def render(self, text):
         self.rendered.append(text)
         import numpy as np
 
-        yield np.zeros(2400, dtype=np.float32), 24000
+        yield np.zeros(self.samples, dtype=np.float32), 24000
 
 
 @unittest.skipUnless(importlib.util.find_spec("sounddevice") and importlib.util.find_spec("numpy"), "voice group")
@@ -81,6 +83,7 @@ class Playing(unittest.TestCase):
         patcher = patch("sounddevice.OutputStream", Stream)
         patcher.start()
         self.addCleanup(patcher.stop)
+        self.rows = radio_rows(self)
         self.sp = Speaker(Hub())
         self.sp.voice = FakeVoice()
         self.sp.start()
@@ -97,6 +100,32 @@ class Playing(unittest.TestCase):
         self.assertTrue(self.sp.busy())
         self.assertTrue(self.wait(lambda: self.played and not self.sp.busy()))
         self.assertEqual(self.sp.voice.rendered, ["P1."])
+        self.assertEqual(self.rows("spoken"), [])  # only kept live
+
+    def test_live_keeps_each_line_as_a_clip_with_when_it_played(self):
+        self.sp.record = True
+        self.assertTrue(self.wait(lambda: self.sp.state == "ready"))
+        asked = time.time()
+        self.sp.say("P1.")
+        self.assertTrue(self.wait(lambda: self.rows("spoken")))
+        row = self.rows("spoken")[0]
+        self.assertEqual({k: row[k] for k in ("text", "part", "secs", "played", "cut")},
+                         {"text": "P1.", "part": 0, "secs": 0.1, "played": 0.1, "cut": False})
+        self.assertGreaterEqual(row["start"], round(asked, 3))
+        self.assertTrue((radiolog.CLIPS / "spoken" / row["clip"]).exists())
+
+    def test_a_line_cut_off_says_how_much_was_heard(self):
+        self.sp.record = True
+        self.sp.voice = FakeVoice(samples=24000)  # a second, 20 writes
+        self.assertTrue(self.wait(lambda: self.sp.state == "ready"))
+        self.sp.say("A long one.")
+        self.assertTrue(self.wait(lambda: len(self.played) >= 3))
+        self.sp.stop()
+        self.assertTrue(self.wait(lambda: self.rows("spoken")))
+        row = self.rows("spoken")[0]
+        self.assertTrue(row["cut"])
+        self.assertGreater(row["played"], 0)
+        self.assertLess(row["played"], row["secs"])
 
     def test_keying_the_radio_drops_what_was_asked_before(self):
         self.assertTrue(self.wait(lambda: self.sp.state == "ready"))
