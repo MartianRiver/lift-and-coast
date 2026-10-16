@@ -9,13 +9,12 @@ each session recording on the wall clock, which together put the whole radio on 
 """
 import json
 import threading
-from pathlib import Path
 
-from . import log
+from . import archive, log
 
 _log = log.get("radiolog")
 
-CLIPS = Path(__file__).resolve().parent.parent / "captures" / "radio"
+CLIPS = archive.DATA / "radio"
 LOG = CLIPS / "messages.jsonl"
 _lock = threading.Lock()
 

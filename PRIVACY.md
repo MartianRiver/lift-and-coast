@@ -33,6 +33,7 @@ All of it is in `captures/` (or wherever `RE_DATA_DIR` points), except your API 
 - `sessions/`: a recording of every session, the raw telemetry the game sent;
 - `archive.db`: the catalogue of those sessions, what each model call cost and how long it took, the strategy team's notes, and your laps, fuel and tyre history across sessions;
 - `radio/`: every radio clip you recorded, what the engineer said back (text and audio), and a log of both;
+- `llm/`: every request sent to the models and the reply that came back, word for word, one file a day;
 - `driver.json`, `fixes.json`, `pitwall-brief.json`, `pitwall-prep.json`: your name and pronouns, the speech-to-text corrections you taught it, your brief for the strategy team and the last race plan.
 
 Deleting any of it is safe. Deleting `captures/` entirely starts you from scratch.

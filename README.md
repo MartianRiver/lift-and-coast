@@ -65,7 +65,7 @@ While it's held, the server records from the computer's microphone: whichever in
 
 To use something other than OpenRouter, set `RE_LLM_URL` (for example `http://localhost:11434/v1` for Ollama) and `RE_LLM_KEY` if it needs one, in your environment or `.env`.
 
-Everything it records goes in `captures/`: sessions (about 65 MB an hour once compressed), the archive database, radio clips and your settings. Set `RE_DATA_DIR` to keep them somewhere else.
+Everything it records goes in `captures/`: sessions (about 65 MB an hour once compressed), the archive database, radio clips, what was sent to the models and what came back, and your settings. Set `RE_DATA_DIR` to keep them somewhere else.
 
 ## Poking around
 
