@@ -64,8 +64,7 @@ class SessionRecorder:
             self.named = True
             return _log.warn("couldn't name the session file", error=str(e))
         new = archive.unique(self.folder / f"{archive.label(self.started, session)}.f1cap")
-        self.writer.path.rename(new)  # the open handle follows the file
-        self.writer.path = new
+        self.writer.move(new)
         self.named = True
         _log.info("session file", path=str(new), uid=str(self.uid))
 
