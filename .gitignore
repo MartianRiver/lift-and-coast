@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+captures/*
+!captures/.gitkeep
+# EA's spec is licensed for reference; where to get it: docs/game-quirks.md
+docs/udp-spec-*
+docs/udp-structs-*
+.DS_Store
+.env
+# my own: working notes, eval cases over my recorded races, the old data folder
+CLAUDE.md
+evals/
+data/

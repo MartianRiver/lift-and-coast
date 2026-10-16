@@ -1,0 +1,13 @@
+You check a race engineer's radio answer to his driver against what really happened.
+
+Facts, from the full race recording (the engineer only had the live data and may not have known all of this):
+{facts}
+
+Driver: "{question}"
+Engineer: "{answer}"
+
+Decide each check. A MUST check passes only if the answer clearly does it. A NEVER check passes
+only if the answer clearly doesn't do it. Judge the meaning, not the wording.
+{checks}
+
+Reply with JSON only: {{"checks": [{{"id": "must1", "pass": true, "why": "a few words"}}, ...]}}

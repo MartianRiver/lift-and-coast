@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lift and Coast</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">LIFT AND COAST</div>
+  <div id="conn" class="conn" role="status" aria-live="polite">connecting…</div>
+  <div id="radioBadge" class="radio-badge" hidden>● RADIO</div>
+  <button id="driverBtn" class="btn link driver-btn" aria-label="Who's driving: change the name and pronouns the engineer uses"></button>
+  <div id="sessionBar" class="session-bar"></div>
+</header>
+<nav id="tabs" role="tablist" aria-label="Views">
+  <button role="tab" data-tab="race" aria-selected="true">Race</button>
+  <button role="tab" data-tab="pitwall">Pit wall</button>
+  <button role="tab" data-tab="timing">Timing</button>
+  <button role="tab" data-tab="car">Car</button>
+  <button role="tab" data-tab="session">Session</button>
+  <button role="tab" data-tab="events">Events</button>
+  <button role="tab" data-tab="radio">Radio</button>
+  <button role="tab" data-tab="packets">Packets</button>
+  <button role="tab" data-tab="diagnostics">Diagnostics</button>
+  <button role="tab" data-tab="logs" id="logsTab">Logs</button>
+</nav>
+<div id="banner"></div>
+<main id="view"></main>
+<dialog id="driverDialog" aria-labelledby="driverTitle"></dialog>
+<aside id="radioCard" class="radio-card" role="status" aria-live="polite" aria-label="Team radio" hidden></aside>
+<script type="module" src="app.js"></script>
+</body>
+</html>

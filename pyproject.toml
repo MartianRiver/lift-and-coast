@@ -1,0 +1,38 @@
+[project]
+name = "lift-and-coast"
+version = "0.1.0"
+description = "Race engineer for F1 24/25 on UDP telemetry: live dashboard, strategy team and a voice on the radio"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "jellyfish>=1.2.1",
+    "wordfreq>=3.1.1",
+]
+
+[dependency-groups]
+# the mic, speech model and voice run on MLX: Apple Silicon only. Everywhere else (or with
+# --no-group voice) it's the dashboard and the engineer by typed questions.
+voice = [
+    "en-core-web-sm; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "espeakng-loader>=0.2.4; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "misaki>=0.9.4; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-audio>=0.5.9; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "num2words>=0.5.14; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "numpy>=2.5.4; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "parakeet-mlx>=0.5.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "phonemizer-fork>=3.3.2; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sounddevice>=0.5.6; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "soundfile>=0.14.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "spacy>=3.8.16; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+
+[tool.uv]
+default-groups = ["voice"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
+[tool.uv.sources]
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
