@@ -260,6 +260,8 @@ def main():
     args = ap.parse_args()
 
     llm.TRACE = archive.DATA / "llm"
+    log.to_file(archive.DATA / "logs")
+    _log.info("starting", python=sys.version.split()[0], platform=sys.platform, **vars(args))
     hub = Hub()
     state = RaceState(hub)
     crew = assemble(hub, state, args.engineer_model, engineer=not args.no_engineer, mic=not args.no_radio,
