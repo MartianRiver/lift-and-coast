@@ -42,6 +42,12 @@ class Writer:
         if self.count % 2000 == 0:
             self._f.flush()
 
+    def move(self, path):
+        # Windows won't rename a file that's open
+        self._f.close()
+        self.path = self.path.rename(path)
+        self._f = open(self.path, "ab")
+
     def close(self):
         self._f.close()
         _log.info("recording closed", path=str(self.path), packets=self.count)
