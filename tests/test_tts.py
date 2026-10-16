@@ -114,6 +114,14 @@ class Playing(unittest.TestCase):
         self.assertGreaterEqual(row["start"], round(asked, 3))
         self.assertTrue((radiolog.CLIPS / "spoken" / row["clip"]).exists())
 
+    def test_a_clip_that_cant_be_saved_is_still_said(self):
+        self.sp.record = True
+        self.assertTrue(self.wait(lambda: self.sp.state == "ready"))
+        with patch("soundfile.write", side_effect=OSError("disk full")):
+            self.sp.say("P1.")
+            self.assertTrue(self.wait(lambda: self.played and not self.sp.busy()))
+        self.assertEqual(self.rows("spoken"), [])
+
     def test_a_line_cut_off_says_how_much_was_heard(self):
         self.sp.record = True
         self.sp.voice = FakeVoice(samples=24000)  # a second, 20 writes
