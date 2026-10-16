@@ -46,7 +46,7 @@ def assemble(hub, state, model=DEFAULT_MODEL, engineer=True, mic=True, radio_mod
     elif voice:
         from .tts import Speaker
 
-        speaker = Speaker(hub, voice, fx=fx, device=device, at=at)
+        speaker = Speaker(hub, voice, fx=fx, device=device, at=at, record=live)
         speaker.start()
         radio.on_open.append(speaker.stop)  # keying the radio cuts the engineer off
         if eng:

@@ -31,6 +31,7 @@ class Writer:
         self._f = open(self.path, "wb")
         self._f.write(MAGIC)
         self._t0 = time.monotonic()
+        self.wall0 = time.time()  # where t=0 is on the wall clock: lines the radio up with the packets
         self.count = 0
         _log.info("recording", path=str(self.path))
 
