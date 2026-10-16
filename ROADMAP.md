@@ -41,6 +41,7 @@ What I'm working on and what I'd like to get to, grouped by the version it's mea
 - **Resumed saves.** Loading a mid-race save starts a new session as far as the game is concerned, so lap history, gap trends and wear rates start again from that lap. They can be rebuilt from the recording of the earlier part.
 - **Confirming by button.** The engineer suggests something ("box this lap?", "Tsunoda, you mean?") and a press says yes.
 - **Standing requests** like "gap to the leader every three laps", delivered at a sensible point on the lap.
+- **Engineer personalities.** A handful to choose from in the settings, each with a few lines on how it talks: blunt and to the point, and it pushes back on a call it thinks is wrong; calm and steady; numbers first; quiet unless it matters. Each one comes with a voice that suits it and a default for how much it says unprompted, and the unprompted calls are worded in its style too. Only the way things are said changes: the numbers and the strategy calls stay the same, and every personality has to pass the model check before it's offered. They're styles, not impressions of real engineers.
 - Volume and mute for the engineer's voice, and rear grip on the race screen. It's only in the calls for now.
 
 ## 1.0
