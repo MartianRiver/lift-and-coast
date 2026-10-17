@@ -45,7 +45,7 @@ def resolve(ref):
     row = db.execute(f"select s.* from sessions s where {where} order by s.started_at desc limit 1", args).fetchone()
     if not row:
         raise SystemExit(f"no session {ref!r} (see: uv run python -m engineer.dev sessions)")
-    files = [Path(r["path"]) for r in db.execute("select path from files where session_uid = ? order by started_at", (row["uid"],))]
+    files = [archive.located(r["path"]) for r in db.execute("select path from files where session_uid = ? order by started_at", (row["uid"],))]
     return f"#{row['id']} {row['started_at']} {row['track']} {row['type']}", files
 
 

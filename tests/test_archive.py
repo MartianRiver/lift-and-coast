@@ -70,7 +70,22 @@ class Recording(unittest.TestCase):
         self.assertFalse(raw.exists())
         self.assertEqual(len(list(read(xz))), 2)
         path = archive.connect().execute("select path from files").fetchone()["path"]
-        self.assertEqual(path, str(xz))
+        self.assertEqual(path, f"sessions/{xz.name}")  # relative, so the data folder can move
+        self.assertEqual(archive.located(path), xz)
+
+    def test_reindexing_an_old_catalogue_doesnt_list_a_file_twice(self):
+        rec = SessionRecorder(self.tmp / "sessions")
+        rec.write(session(777))
+        rec.write(history(777, [70000]))
+        rec.close(wait=True)
+        db = archive.connect()
+        with db:
+            db.execute("update files set path = ? || path, started_at = '2026-10-13 18:18:18'",  # as the old rows
+                       (tempfile.mkdtemp() + "/",))
+        db.close()
+        db = archive.connect()
+        archive.reindex(db)
+        self.assertEqual([tuple(r) for r in db.execute("select started_at from files")], [("2026-10-13 18:18:18",)])
 
     def test_leftover_raw_file_is_finished_on_start(self):
         rec = SessionRecorder(self.tmp / "sessions")
@@ -93,6 +108,57 @@ class Recording(unittest.TestCase):
         self.assertIsNotNone(rec.writer)
         rec.close(wait=True)
         self.assertEqual(len(list(self.tmp.joinpath("sessions").glob("*.f1cap.xz"))), 2)
+
+
+
+class OldCatalogue(unittest.TestCase):
+    """A catalogue from before paths were relative, copied over from another folder."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        for p in [mock.patch.object(archive, "DATA", self.tmp / "data"), mock.patch.object(archive, "DB", self.tmp / "data" / "a.db"),
+                  mock.patch.object(archive, "SESSIONS", self.tmp / "data" / "sessions")]:
+            p.start()
+            self.addCleanup(p.stop)
+        archive.SESSIONS.mkdir(parents=True)
+        (archive.SESSIONS / "2026-10-13_181818_Austria_Race.f1cap.xz").write_bytes(b"")
+        db = archive.connect()
+        with db:
+            for name in ("2026-10-13_181818_Austria_Race.f1cap.xz", "2026-10-12_090000_Spa_Race.f1cap.xz"):
+                old = str(self.tmp / "elsewhere" / "sessions" / name)
+                db.execute("insert into files (path, session_uid) values (?, '1')", (old,))
+                db.execute("insert into events (session_uid, file, code) values ('1', ?, 'SSTA')", (old,))
+        db.close()
+
+    def rows(self):
+        db = archive.connect()
+        return sorted(r[0] for r in db.execute("select path from files")), sorted(r[0] for r in db.execute("select file from events"))
+
+    def test_files_that_are_here_are_found_here(self):
+        files, events = self.rows()
+        self.assertEqual(files, sorted([str(self.tmp / "elsewhere" / "sessions" / "2026-10-12_090000_Spa_Race.f1cap.xz"),  # not here
+                                        "sessions/2026-10-13_181818_Austria_Race.f1cap.xz"]))
+        self.assertEqual(events, files)
+        self.assertTrue(archive.located("sessions/2026-10-13_181818_Austria_Race.f1cap.xz").exists())
+
+    def test_the_copy_here_wins_while_the_old_folder_still_exists(self):
+        old = self.tmp / "elsewhere" / "sessions" / "2026-10-14_172555_Zandvoort_Race.f1cap.xz"
+        old.parent.mkdir(parents=True)
+        old.write_bytes(b"")
+        (archive.SESSIONS / old.name).write_bytes(b"")
+        db = archive.connect()
+        with db:
+            db.execute("insert into files (path, session_uid) values (?, '3')", (str(old),))
+        db.close()
+        self.assertIn(f"sessions/{old.name}", self.rows()[0])
+
+    def test_rows_an_older_version_adds_later_are_moved_too(self):
+        self.rows()
+        db = archive.connect()
+        with db:
+            db.execute("insert into files (path, session_uid) values (?, '2')", (str(archive.SESSIONS / "2026-10-17_114731_Austria_Race.f1cap.xz"),))
+        db.close()
+        self.assertIn("sessions/2026-10-17_114731_Austria_Race.f1cap.xz", self.rows()[0])
 
 
 if __name__ == "__main__":
