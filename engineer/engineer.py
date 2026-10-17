@@ -10,7 +10,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-from . import brief, driver, log, radiolog, usage
+from . import brief, driver, log, numbers, radiolog, usage
 from .llm import LLMError, api_key, stream
 
 _log = log.get("engineer")
@@ -27,6 +27,7 @@ HISTORY = 6  # exchanges (and radio calls) kept for follow-ups
 # ...and only this recent: older answers got repeated as if current ("the set's fresh" 10 laps into it)
 HISTORY_SECS = 90
 CHECKING = "Copy, checking."
+UNSURE = "Can't give you a solid number on that one."  # said when every sentence of a reply was held back
 SENTENCE = re.compile(r"[.!?](?=\s)")  # "0.7" and "P1." at the end of a chunk don't count
 
 SYSTEM = (Path(__file__).resolve().parent / "prompts" / "engineer.md").read_text()  # the live brief follows it
@@ -120,6 +121,17 @@ class Engineer:
         _log.info("asking", model=self.model, question=msg["text"], brief_chars=len(data))
 
         spoken = ""  # streamed text not yet handed to the voice
+        said, held = [], []
+        given = data + "\n" + msg["text"]
+
+        def say(sentence):
+            wrong = numbers.unsupported(sentence, given)
+            if wrong:
+                held.append({"text": sentence, "numbers": wrong})
+                _log.warn("number not in the brief, not said", sentence=sentence, numbers=wrong)
+                return
+            said.append(sentence)
+            self.speak(sentence, reply["at"])
 
         def on_text(chunk):
             nonlocal spoken
@@ -127,7 +139,7 @@ class Engineer:
             spoken += chunk
             self._publish(reply, status="streaming")
             while m := SENTENCE.search(spoken):
-                self.speak(spoken[:m.end()].strip(), reply["at"])
+                say(spoken[:m.end()].strip())
                 spoken = spoken[m.end():]
 
         try:
@@ -137,17 +149,22 @@ class Engineer:
             return self._publish(reply, status="error", error=str(e))
         reply["text"] = reply["text"].strip()
         if spoken.strip():
-            self.speak(spoken.strip(), reply["at"])
-        self._history.append((time.time(), _question(msg), reply["text"]))
-        self._publish(reply, status="done", **stats)
+            say(spoken.strip())
+        if held and not said:
+            said.append(UNSURE)
+            self.speak(UNSURE, reply["at"])
+        # what was actually said, so a follow-up (or the team) doesn't build on a held-back figure
+        heard = " ".join(said) if held else reply["text"]
+        self._history.append((time.time(), _question(msg), heard))
+        self._publish(reply, status="done", held=held or None, **stats)
         if route == "now":  # no time to ask: the team looks at what we said
-            self.wall.answered(msg["text"], reply["text"])
+            self.wall.answered(msg["text"], heard)
 
     def _publish(self, reply, **changes):
         reply.update(changes)
         if reply["status"] in ("done", "error"):
             self.replies.append(dict(reply))
-            radiolog.record("reply", {k: reply.get(k) for k in ("to", "status", "text", "model", "error", "local", "firstMs", "at")})
+            radiolog.record("reply", {k: reply.get(k) for k in ("to", "status", "text", "held", "model", "error", "local", "firstMs", "at")})
         self.hub.publish("reply", dict(reply))
 
 

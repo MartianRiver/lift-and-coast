@@ -40,7 +40,7 @@ class Streaming(unittest.TestCase):
         said = []
         chunks = ["Norris is closing, 0.", "7 a lap. About 4.6", " at the flag. Cop", "y."]
         with patch("engineer.engineer.api_key", return_value="x"), \
-                patch("engineer.engineer.brief.build", return_value="DATA"), \
+                patch("engineer.engineer.brief.build", return_value="NORRIS +1.2 closing on you 0.68/lap ≈4.6s at the flag"), \
                 patch("engineer.engineer.stream", lambda m, msgs, on_text, **kw: [on_text(c) for c in chunks] and {}):
             eng = Engineer(Hub(), SimpleNamespace(lock=threading.Lock(), session_uid=1, latest={}))
             eng.speak = lambda text, at=None: said.append(text)

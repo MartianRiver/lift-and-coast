@@ -119,7 +119,9 @@ function replyHtml(r, full) {
   if (r.status === 'thinking') return '<div class="reply muted">Engineer: …</div>';
   const meta = full && r.status === 'done' && !r.local
     ? `<div class="muted small">${esc(r.model)} · first word ${r.firstMs ?? '–'}ms · ${((r.totalMs || 0) / 1000).toFixed(1)}s${r.cost != null ? ` · $${r.cost.toFixed(4)}` : ''}</div>` : '';
-  return `<div class="reply">${esc(r.text)}${r.status === 'streaming' ? '▍' : ''}</div>${meta}`;
+  const held = full && r.held
+    ? r.held.map((h) => `<div class="warn small">Not said, ${esc(h.numbers.join(', '))} isn't in the data: “${esc(h.text)}”</div>`).join('') : '';
+  return `<div class="reply">${esc(r.text)}${r.status === 'streaming' ? '▍' : ''}</div>${held}${meta}`;
 }
 
 async function onAsk(e) {
