@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import diagnostics, driver, log, radiolog, usage, view
+from . import archive, diagnostics, driver, llm, log, radiolog, usage, view
 from .crew import assemble
 from .pitwall import BUDGET, MODELS, notes
 from .engineer import DEFAULT_MODEL
@@ -259,6 +259,9 @@ def main():
     ap.add_argument("--no-pitwall", action="store_true", help="no strategy team: the engineer and the code make the calls")
     args = ap.parse_args()
 
+    llm.TRACE = archive.DATA / "llm"
+    log.to_file(archive.DATA / "logs")
+    _log.info("starting", python=sys.version.split()[0], platform=sys.platform, **vars(args))
     hub = Hub()
     state = RaceState(hub)
     crew = assemble(hub, state, args.engineer_model, engineer=not args.no_engineer, mic=not args.no_radio,

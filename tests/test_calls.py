@@ -7,6 +7,7 @@ from engineer.calls import Caller, common, gaps
 from engineer.calls.scan import SETTLE, scan
 from engineer.race import Race
 from engineer.spec import PACKETS
+from tests import radio_rows
 from tests.test_brief import Hub, raced
 
 
@@ -128,6 +129,17 @@ class Delivery(unittest.TestCase):
         self.step(dt=0.2)
         self.assertEqual(self.step(dt=1.5), [])
         self.assertEqual(len(self.caller.queue), 1)
+
+    def test_live_calls_go_in_the_radio_log_and_replayed_ones_dont(self):
+        rows = radio_rows(self)
+        self.push(text="replayed")
+        self.step(dt=0.2)
+        self.step(dt=1.2)
+        self.caller.at = lambda: (1, 15, 17)
+        self.push(text="live")
+        self.step(dt=7.0)
+        self.assertEqual(rows("call"), [{"kind": "call", **self.caller.sent[0]}])
+        self.assertEqual(self.caller.sent[0]["text"], "live")
 
     def test_calls_are_spaced(self):
         self.push(text="one")

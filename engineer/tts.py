@@ -14,7 +14,7 @@ import queue
 import threading
 import time
 
-from . import log, usage
+from . import log, radiolog, usage
 from .spoken import speakable
 
 _log = log.get("tts")
@@ -98,8 +98,10 @@ class Voice:
 class Speaker:
     """Queue of things to say. `say` never blocks; `stop` cuts what's playing and what's waiting."""
 
-    def __init__(self, hub, spec=None, fx=False, device=None, at=lambda: usage.NOWHERE):
+    def __init__(self, hub, spec=None, fx=False, device=None, at=lambda: usage.NOWHERE, record=False):
         self.hub, self.device, self.at = hub, device, at
+        self.record = record  # keep what's said as clips + when it played (live only), to cut into race footage
+        self._n = 0
         self.voice = Voice(spec, fx)
         self.state = "loading"
         self.error = None
@@ -161,16 +163,31 @@ class Speaker:
                         usage.metric("tts_ms", round((time.perf_counter() - t) * 1000), self.at(), chars=len(text))
                     if gen != self._gen:
                         break
-                    self._audio.put((audio, rate, gen))
+                    line = self._keep(audio, rate, text, i) if self.record else None
+                    self._audio.put((audio, rate, gen, line))
             except Exception as e:  # one bad line shouldn't silence the engineer
                 _log.error("synthesis failed", text=text, error=str(e))
-            self._audio.put((None, 0, gen))  # end of this item
+            self._audio.put((None, 0, gen, None))  # end of this item
+
+    def _keep(self, audio, rate, text, part):
+        import soundfile as sf
+
+        self._n += 1
+        folder = radiolog.CLIPS / "spoken"
+        path = folder / time.strftime(f"%Y%m%d-%H%M%S-{self._n}.wav")
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            sf.write(path, audio, rate)
+        except Exception as e:
+            _log.error("couldn't save spoken clip", error=str(e))
+            return None
+        return {"text": text, "part": part, "clip": path.name, "secs": round(len(audio) / rate, 3)}
 
     def _play(self):
         import sounddevice as sd
 
         while True:
-            audio, rate, gen = self._audio.get()
+            audio, rate, gen, line = self._audio.get()
             if audio is None:
                 with self._lock:
                     self._pending = max(0, self._pending - 1) if gen == self._gen else self._pending
@@ -180,15 +197,21 @@ class Speaker:
             if gen != self._gen:
                 continue
             self._set("speaking")
+            start, played = time.time(), 0
             try:
                 with sd.OutputStream(samplerate=rate, channels=1, dtype="float32", device=self.device) as out:
+                    start = time.time()  # opening the device takes a moment
                     step = int(rate * BLOCK)
                     for i in range(0, len(audio), step):
                         if gen != self._gen:
                             break
                         out.write(audio[i:i + step].reshape(-1, 1))
+                        played = min(i + step, len(audio))
             except Exception as e:
                 _log.error("playback failed", error=str(e))
+            if line:
+                radiolog.record("spoken", {**line, "start": round(start, 3), "played": round(played / rate, 3),
+                                           "cut": played < len(audio)})
 
 
 def main():
