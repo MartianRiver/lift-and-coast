@@ -5,6 +5,7 @@ const $ = (s) => document.getElementById(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const CARD_HOLD_MS = 9000;
 const QUICK_FLASH_MS = 1500;
+const STREAM_STUCK_MS = 10000;
 
 let build = null;
 let names = [];
@@ -12,6 +13,8 @@ let buttons = 0;
 let radio = { status: 'connecting' };
 let level = 0;
 let streamUp = false;
+let es = null;
+let downSince = Date.now();
 let quickAt = null;
 let cardMsg = null;      // message currently shown on the card
 let cardTimer = null;
@@ -26,7 +29,7 @@ const watchers = [];     // other views showing the radio (Race tab)
 const held = (mask, b) => Math.floor(mask / 2 ** b) % 2 === 1; // >>> breaks on bit 31
 
 function connect() {
-  const es = new EventSource('/api/stream');
+  es = new EventSource('/api/stream');
   es.addEventListener('hello', (m) => {
     const d = JSON.parse(m.data);
     // server restarted (maybe with new code): reload rather than run stale JS against it
@@ -42,6 +45,7 @@ function connect() {
     engineer = d.engineer || {};
     renderFixes();
     streamUp = true;
+    downSince = null;
     update();
   });
   es.addEventListener('buttons', (m) => onButtons(JSON.parse(m.data)));
@@ -74,10 +78,21 @@ function connect() {
   });
   es.onerror = () => {
     streamUp = false;
+    downSince = downSince || Date.now();
     console.warn('[radio] stream dropped, browser will retry');
     update();
   };
 }
+
+// a tab left open while the server was down can be frozen or given up on by the browser, and then it
+// never hears the server come back: start a new stream (its hello reloads the page after a restart)
+setInterval(() => {
+  if (streamUp || Date.now() - downSince < STREAM_STUCK_MS) return;
+  console.warn('[radio] stream still down, opening a new one');
+  es.close();
+  downSince = Date.now();
+  connect();
+}, STREAM_STUCK_MS / 2);
 
 function onButtons(d) {
   const prev = buttons;

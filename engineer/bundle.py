@@ -125,7 +125,7 @@ def starts(logs):
     """The server's `starting` lines: version, options and models of each run."""
     out = []
     for path in logs:
-        for line in path.read_text(errors="replace").splitlines():
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             m = re.search(r"\[server\] starting (\{.*\})$", line)
             if m:
                 out.append(json.loads(m.group(1)))
@@ -252,7 +252,7 @@ def _records(files):
 
 def _rows(path):
     try:
-        lines = Path(path).read_text().splitlines()
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
         return []
     out = []

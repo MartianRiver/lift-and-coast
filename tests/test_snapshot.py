@@ -70,10 +70,10 @@ class Snapshot(unittest.TestCase):
         self.assertEqual(snapshot.make(out, jobs=1), 1)  # quali isn't a race; the Zandvoort file is gone
         [made] = out.glob("*.txt")
         self.assertEqual(made.name, "2026-10-18_160530_Brazil_99.txt")
-        self.assertEqual(made.read_text(), snapshot.race(race))
+        self.assertEqual(made.read_text(encoding="utf-8"), snapshot.race(race))
         self.assertEqual(snapshot.make(tmp / "none", only={3}, jobs=1), 0)
         self.assertEqual(snapshot.make(tmp / "pool", jobs=2), 1)  # worker processes, reading this archive too
-        self.assertEqual((tmp / "pool" / made.name).read_text(), made.read_text())
+        self.assertEqual((tmp / "pool" / made.name).read_text(encoding="utf-8"), made.read_text(encoding="utf-8"))
 
     def test_diff_names_the_races_that_changed(self):
         a, b = Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp())

@@ -46,7 +46,7 @@ def _one(job):
     name, files, folder, paths = job
     # a worker is a new process: the brief's pit loss reads earlier races from the archive this one listed
     archive.DATA, archive.DB = paths
-    (folder / f"{name}.txt").write_text(race(_records(files)))
+    (folder / f"{name}.txt").write_text(race(_records(files)), encoding="utf-8")
     return name
 
 
@@ -84,8 +84,8 @@ def diff(a, b):
     a, b = Path(a), Path(b)
     out, changed = [], 0
     for name in sorted({p.name for p in a.glob("*.txt")} | {p.name for p in b.glob("*.txt")}):
-        left = (a / name).read_text().splitlines(keepends=True) if (a / name).exists() else []
-        right = (b / name).read_text().splitlines(keepends=True) if (b / name).exists() else []
+        left = (a / name).read_text(encoding="utf-8").splitlines(keepends=True) if (a / name).exists() else []
+        right = (b / name).read_text(encoding="utf-8").splitlines(keepends=True) if (b / name).exists() else []
         d = list(difflib.unified_diff(left, right, str(a / name), str(b / name)))
         changed += bool(d)
         out += d
