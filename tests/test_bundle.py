@@ -30,6 +30,7 @@ class Bundle(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         for p in [mock.patch.object(archive, "DATA", self.tmp), mock.patch.object(archive, "DB", self.tmp / "a.db"),
+                  mock.patch.object(archive, "SESSIONS", self.tmp / "sessions"),
                   mock.patch.object(radiolog, "CLIPS", self.tmp / "radio"),
                   mock.patch.object(radiolog, "LOG", self.tmp / "radio" / "messages.jsonl"),
                   mock.patch.object(bundle, "FOLDER", self.tmp / "bundles")]:

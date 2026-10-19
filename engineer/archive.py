@@ -77,7 +77,7 @@ def connect():
     db = sqlite3.connect(DB, timeout=30)
     db.row_factory = sqlite3.Row
     _upgrade(db)
-    _relative_paths(db)
+    _heal_paths(db)
     return db
 
 
@@ -100,11 +100,8 @@ def _upgrade(db):
 
 
 def stored(path):
-    """A capture file as the catalogue keeps it: relative to DATA, so the folder can move."""
-    try:
-        return Path(path).absolute().relative_to(DATA.absolute()).as_posix()
-    except ValueError:
-        return str(path)
+    """A capture file as the catalogue keeps it: absolute, which every version can open (0.1 reads paths as they are)."""
+    return str(Path(path).absolute())
 
 
 def located(path):
@@ -112,21 +109,20 @@ def located(path):
     return path if path.is_absolute() else DATA / path
 
 
-def _relative_paths(db):
-    """Absolute paths, from older versions or a catalogue copied from another folder, pointed at the copy here."""
+def _heal_paths(db):
+    """Point each row at the file where it is now: a catalogue copied from another folder, or with the
+    relative paths a pre-release 0.2 wrote, gets the copy in sessions/ (or under DATA for a relative one)."""
     moved = []
     for (old,) in db.execute("select path from files").fetchall():
-        if not Path(old).is_absolute():
-            continue
         here = SESSIONS / Path(old).name  # names carry the date and time, so this is the same recording
-        new = stored(here) if here.exists() else stored(old)
+        new = str(here) if here.exists() else stored(located(old))
         if new != old:
             moved.append((new, old))
     if moved:
         with db:
             db.executemany("update or replace files set path = ? where path = ?", moved)
             db.executemany("update events set file = ? where file = ?", moved)
-        _log.info("catalogue paths made relative", files=len(moved))
+        _log.info("catalogue paths pointed here", files=len(moved))
 
 
 # --- reading a capture ------------------------------------------------------------

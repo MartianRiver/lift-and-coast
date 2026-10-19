@@ -102,8 +102,9 @@ def _counts(db, uid):
 
 
 def _errors(db, uid):
-    rows = db.execute("select at, role, model, error from usage where error is not null and at >= ? order by at desc limit 5",
-                      (time.time() - WEEK,)).fetchall()
+    # what went wrong while driving: the dev tools and evals have their own failures on purpose
+    rows = db.execute("select at, role, model, error from usage where error is not null and at >= ? "
+                      "and role not in ('dev', 'eval', 'judge') order by at desc limit 5", (time.time() - WEEK,)).fetchall()
     n = db.execute("select count(*) from usage where error is not null and session_uid = ?", (uid,)).fetchone()[0]
     return {"session": n, "recent": [dict(r) for r in rows]}
 

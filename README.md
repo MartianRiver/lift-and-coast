@@ -88,7 +88,7 @@ The strategy evals (`engineer.evals`) read moments to test from `evals/cases.tom
 
 ## Versions
 
-`main` is always the latest release, so the clone above gets that; what's coming next lives on the `next` branch. Each release is tagged with notes on what changed and anything you need to do ([CHANGELOG.md](CHANGELOG.md)). To stay on one, clone it with `--branch v0.1.0`; to go back to one, `git checkout v0.1.0 && uv sync`. Your recordings work with every version. How versions are numbered and what's checked before a release: [docs/releasing.md](docs/releasing.md).
+`main` is always the latest release, so the clone above gets that; what's coming next lives on the `next` branch. Each release is tagged with notes on what changed and anything you need to do ([CHANGELOG.md](CHANGELOG.md)). To stay on one, clone it with `--branch v0.2.0`; to go back to one, `git checkout v0.1.0 && uv sync`. Your recordings, and the archive of them, work with every version. How versions are numbered and what's checked before a release: [docs/releasing.md](docs/releasing.md).
 
 ## Issues and ideas
 

@@ -51,7 +51,8 @@ class Snapshot(unittest.TestCase):
 
     def test_every_race_in_the_archive_gets_its_file(self):
         tmp = Path(tempfile.mkdtemp())
-        for p in [mock.patch.object(archive, "DATA", tmp), mock.patch.object(archive, "DB", tmp / "a.db")]:
+        for p in [mock.patch.object(archive, "DATA", tmp), mock.patch.object(archive, "DB", tmp / "a.db"),
+                  mock.patch.object(archive, "SESSIONS", tmp / "sessions")]:
             p.start()
             self.addCleanup(p.stop)
         race = packets(7)
