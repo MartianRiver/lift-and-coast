@@ -12,7 +12,7 @@ QUALI = range(5, 15)  # session types: every kind of qualifying and shootout
 
 
 def brief(st):
-    """The quick brief as a call row, or None when there's nothing to go on (menus, spectating, no lap yet)."""
+    """The quick brief as a call row, or None when there's nothing to go on (menus, spectating)."""
     with st.lock:
         if not ready(st):
             return None
@@ -68,7 +68,7 @@ def _lap(b):
         off = best and (last - best) / 1000
         out.append(f"Last lap {laptime(last)}" + (", your best." if off == 0 else f", {off:.3f} off your best." if off and off > 0 else "."))
     elif not best and not out:
-        return []
+        out.append("No lap time yet.")  # a press that says nothing sounds like the button didn't work
     return out + ([] if b.s["sessionType"] in QUALI else _tyre(b))
 
 

@@ -243,7 +243,29 @@ async function prepare() {
     console.error('[app] race prep failed', e);
   }
 }
+async function makeBundle() {
+  const b = Diag.bundle;
+  b.state = 'making';
+  render();
+  try {
+    const r = await fetch('/api/bundle', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: b.note, audio: b.audio, telemetry: b.telemetry }) });
+    const out = await r.json();
+    if (!r.ok) throw new Error(out.error || `HTTP ${r.status}`);
+    Object.assign(b, { state: 'done', files: out.files, folder: out.folder });
+  } catch (e) {
+    Object.assign(b, { state: 'error', error: e.message });
+    console.error('[app] debug bundle failed', e);
+  }
+  render();
+}
+$('#view').addEventListener('input', (e) => {
+  if (e.target.id === 'bundleNote') Diag.bundle.note = e.target.value;
+  if (e.target.id === 'bundleAudio') Diag.bundle.audio = e.target.checked;
+  if (e.target.id === 'bundleTelemetry') Diag.bundle.telemetry = e.target.checked;
+});
 $('#view').addEventListener('click', (e) => {
+  if (e.target.id === 'bundleMake') makeBundle();
   if (e.target.id === 'pwBriefClear') saveBrief('');
   if (e.target.id === 'pwPrep') prepare();
 });

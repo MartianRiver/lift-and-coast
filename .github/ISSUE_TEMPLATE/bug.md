@@ -17,7 +17,10 @@ labels: bug
 - UDP format in the game's settings:
 - OS the server runs on, and whether voice is installed:
 
-**Server output** (around when it went wrong; `RE_LOG_LEVEL=DEBUG` for more)
+**Debug bundle** (Diagnostics tab → Debug bundle; attach every file it made. It has your radio audio unless you untick it)
+
+
+**Server output**, if there's no bundle (around when it went wrong; `RE_LOG_LEVEL=DEBUG` for more)
 
 ```
 ```
