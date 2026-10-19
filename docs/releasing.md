@@ -19,7 +19,7 @@ git checkout v0.1.0 && uv sync      # go back from a newer one
 ## Branches
 
 - `main` is the latest release and nothing else. It only moves when a release is made.
-- `next` is what will become the next version. Work happens on a branch off `next` and is squash-merged back once its own checks pass (tests, every changed line covered by a test or deliberately not, a read of the whole diff, and a live race if it changes what happens during one).
+- `next` is what will become the next version. Work happens on a branch off `next` and is squash-merged back once its own checks pass (tests, every changed line covered by a test or deliberately not, a read of the whole diff, and a live race if it changes how the radio, the voice or the strategy team runs during one). A change to what the brief says or which calls are made can go in on a replay of a recorded race instead: the full weekend on `next` before a release is its live race.
 - A release merges `next` into `main` with a merge commit, so `main`'s history reads one release at a time, then tags it.
 - An urgent fix goes on a branch off `main`, is released as 0.x.y, and `main` is merged back into `next`.
 
