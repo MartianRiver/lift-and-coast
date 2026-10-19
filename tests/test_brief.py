@@ -11,7 +11,7 @@ import time
 import unittest
 from unittest import mock
 
-from engineer import brief, calc, pitstops
+from engineer import brief, calc, pitstops, race
 from engineer.glance import glance
 from engineer.spec import EVENT_DETAILS_SIZE, PACKETS
 from engineer.state import RaceState
@@ -159,6 +159,41 @@ class Gaps(unittest.TestCase):
         g = calc.gaps(self.st.laps, 0, [1, 2, 3])
         self.assertAlmostEqual(g[2]["gap"], -2.0 + 0.15 * 7, places=2)
         self.assertAlmostEqual(g[2]["trend"], 0.15, places=2)
+
+    def live(self, *order, pitting=()):
+        """Lap data as the game sends it now: (car, seconds behind the leader) in running order."""
+        cars = PACKETS[2].blank()["lapData"]
+        for pos, (idx, secs) in enumerate(order, 1):
+            cars[idx].update(deltaToRaceLeaderMinutesPart=int(secs // 60), deltaToRaceLeaderMSPart=round(secs % 60 * 1000),
+                             pitStatus=int(idx in pitting), resultStatus=2, carPosition=pos)
+        return cars
+
+    def test_the_gap_now_comes_from_the_live_timing(self):
+        # Tsunoda has just got past: the line gap still says behind, the live timing says 0.4 ahead
+        line = calc.gaps(self.st.laps, 0, [1, 2])
+        g = calc.gaps(self.st.laps, 0, [1, 2], live=self.live((2, 0.0), (1, 0.6), (0, 1.0)))
+        self.assertAlmostEqual(g[1]["gap"], -0.4, places=3)
+        self.assertAlmostEqual(g[2]["gap"], -1.0, places=3)  # the leader's own 0 counts
+        self.assertEqual((g[1]["trend"], g[1]["last"]), (line[1]["trend"], line[1]["last"]))
+
+    def test_the_race_snapshot_reads_the_live_timing(self):
+        latest = self.st.latest[2]
+        saved = latest["lapData"]
+        latest["lapData"] = [dict(c) for c in saved]
+        try:
+            for idx, c in enumerate(self.live((2, 0.0), (1, 0.6), (0, 1.0))[:3]):
+                latest["lapData"][idx].update(c)
+            self.assertAlmostEqual(race.Race(self.st).gaps[1]["gap"], -0.4, places=3)
+        finally:
+            latest["lapData"] = saved
+
+    def test_no_live_time_falls_back_to_the_line(self):
+        line = calc.gaps(self.st.laps, 0, [1, 2])
+        g = calc.gaps(self.st.laps, 0, [1, 2], live=self.live((2, 0.0), (1, 0.6), (0, 1.0), pitting=[1]))
+        self.assertEqual(g[1]["gap"], line[1]["gap"])  # in the pit lane the game sends 0
+        g = calc.gaps(self.st.laps, 0, [1, 2], live=self.live((0, 0.0), (2, 0.0), (1, 2.0)))
+        self.assertEqual(g[2]["gap"], line[2]["gap"])  # 0 but not leading: not timed
+        self.assertAlmostEqual(g[1]["gap"], 2.0, places=3)
 
     def test_trend_ignores_laps_across_a_stop(self):
         g = calc.gaps(self.st.laps, 0, [3])[3]

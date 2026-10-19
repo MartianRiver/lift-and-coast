@@ -132,10 +132,12 @@ def fresh_gain(sets):
     return -best / 1000 if best < 0 else None
 
 
-def gaps(laps, me, cars, window=3):
-    """{idx: {gap, trend, trendLaps, last}}: gap in seconds at the last line both crossed (+ = behind
-    you); trend = change in that gap per lap over up to `window` laps, last = change over the last lap
-    alone. Windows never span a stop by either car. Trends can turn quickly, so the brief shows both."""
+def gaps(laps, me, cars, window=3, live=None):
+    """{idx: {gap, trend, trendLaps, last}}: gap in seconds now (+ = behind you), from the game's live
+    time to the leader (`live`: the lap data) when both cars have one, else at the last line both
+    crossed; trend = change in the line gap per lap over up to `window` laps, last = change over the
+    last lap alone. Windows never span a stop by either car. Trends can turn quickly, so the brief
+    shows both."""
     mine = laps.cars.get(me)
     if not mine:
         return {}
@@ -152,16 +154,28 @@ def gaps(laps, me, cars, window=3):
             continue
         if a["pit"] or b["pit"]:
             continue  # crossed in the pit lane: that line time is from before the stop, so the gap would be stale
-        g = {"gap": b["t"] - a["t"], "trend": None, "trendLaps": None, "last": None}
+        line = b["t"] - a["t"]
+        theirs, mine_now = (_to_leader(live, idx), _to_leader(live, me)) if live else (None, None)
+        now = theirs - mine_now if theirs is not None and mine_now is not None else line
+        g = {"gap": now, "trend": None, "trendLaps": None, "last": None}
         for k in range(window, 0, -1):
             change = _change(laps, me, idx, lap, k, a["stops"], b["stops"])
             if change is not None:
-                g["trend"], g["trendLaps"] = (g["gap"] - change) / k, k
+                g["trend"], g["trendLaps"] = (line - change) / k, k
                 break
         change = _change(laps, me, idx, lap, 1, a["stops"], b["stops"])
-        g["last"] = None if change is None else g["gap"] - change
+        g["last"] = None if change is None else line - change
         out[idx] = g
     return out
+
+
+def _to_leader(live, idx):
+    """Seconds behind the leader as the game times it, or None where it doesn't: 0 in the pit lane."""
+    c = live[idx]
+    secs = c["deltaToRaceLeaderMinutesPart"] * 60 + c["deltaToRaceLeaderMSPart"] / 1000
+    if c["pitStatus"] or c["resultStatus"] != 2 or not (secs or c["carPosition"] == 1):
+        return None
+    return secs
 
 
 def _change(laps, me, idx, lap, k, my_stops, their_stops):
