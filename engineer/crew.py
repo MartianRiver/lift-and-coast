@@ -3,7 +3,7 @@ import importlib.util
 import time
 from dataclasses import dataclass
 
-from . import driver, log, usage, view
+from . import driver, log, quick, radiolog, usage, view
 from .calls import NORMAL, URGENT, Caller
 from .calls.common import call
 from .engineer import DEFAULT_MODEL, Engineer
@@ -74,7 +74,24 @@ def assemble(hub, state, model=DEFAULT_MODEL, engineer=True, mic=True, radio_mod
             eng.commands.append(caller.command)
     if wall:
         _staff(wall, eng, caller, radio)
+    radio.on_quick.append(lambda: _quick(state, hub, eng, speaker, live))
     return Crew(eng, radio, speaker, caller, wall)
+
+
+def _quick(state, hub, eng, speaker, live):
+    """The second button: the quick brief, said now whatever the session."""
+    out = quick.brief(state)
+    if not out:
+        return
+    out.update(id=f"q{time.time_ns()}", at=time.time())
+    hub.publish("call", out)
+    if live:
+        radiolog.record("call", out)
+    _log.info("quick brief", text=out["text"])
+    if eng:
+        eng.said(out["text"])
+    if speaker:
+        speaker.say(out["text"])
 
 
 def _staff(wall, eng, caller, radio):

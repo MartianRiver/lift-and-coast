@@ -19,6 +19,7 @@ _log = log.get("pitwall")
 FILE = archive.DATA / "pitwall-prep.json"
 KEEP_HOURS = 12      # a prep older than this belongs to another weekend
 RACES = (15, 16, 17)
+QUALI = range(5, 15)  # every kind of qualifying and shootout
 
 
 def facts(db=None):
@@ -45,12 +46,13 @@ def _event(db, last):
     sprint = len([t for t in weekend if t in RACES]) > 1 and kind == min(t for t in weekend if t in RACES)
     share = profile.distance(db)
     laps = round(profile.full_laps(track, length, sprint) * share) if share else None
-    info = {"track": track, "trackId": last["track_id"], "length": length, "laps": laps, "session": kind, "grid": None}
+    info = {"track": track, "trackId": last["track_id"], "length": length, "laps": laps, "session": kind, "grid": None,
+            "sprint": sprint}
     lines = ["PRE-RACE (the race hasn't loaded: this is from his last session here and his earlier races)",
-             f"EVENT  {track} ({length / 1000:.3f} km) · next: {L.name(L.SESSION_TYPES, kind)}"
+             f"EVENT  {track} ({length / 1000:.3f} km) · next: {L.name(L.SESSION_TYPES, kind)}{' (the sprint)' if sprint else ''}"
              + (f" · ≈{laps} laps ({share:.0%} race distance, like his other races; the exact count comes when it loads)" if laps else "")]
     grid = last["position"]
-    if last["type_id"] in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14) and grid:
+    if last["type_id"] in QUALI and grid:
         info["grid"] = grid
         lines.append(f"GRID   P{grid} (his {last['type']} result{'; outside the top 10 he picks his starting tyre' if grid > 10 else ''})")
     samples = [w for w in last["forecast"] or [] if w["session"] == kind]
@@ -95,7 +97,7 @@ def _fuel(db, info):
 
 
 RACE_LIFE = 0.5    # a set's life in the race against what quali says for it, every compound and track
-HARD = (1.3, 500)  # the new Hard every race adds: life × the new Medium's, ms/lap slower than it
+HARD = (1.3, 500)  # the new Hard a main race adds (a sprint doesn't): life × the new Medium's, ms/lap slower than it
 FLOOR = 0.3  # laps of fuel over the target left at the flag: they've never needed to save fuel
 
 
@@ -141,7 +143,7 @@ def _tyres(db, last, info):
             out.append(f"       his dry numbers all come from the top 10; from P{info['grid']} the first stint is in traffic, "
                        "where dirty air wears tyres faster")
     if last["sets"]:
-        sets = _sets(race_sets(last["sets"], last["type_id"] in RACES), stints)
+        sets = _sets(race_sets(last["sets"], last["type_id"], info.get("sprint")), stints)
         out.append("SETS   he has (life = the game's estimate for the race; s/lap against the set he ended the session on):")
         for x in sets:
             mine = f", ≈{x['mine']:.0f} laps at his rate" if x["mine"] else ""
@@ -166,13 +168,14 @@ def _vs_field(stints):
     return out
 
 
-def race_sets(raw, race):
-    """The sets as the race will have them: quali's lives halved, plus the new Hard quali doesn't list."""
-    if race:
+def race_sets(raw, kind, sprint=False):
+    """The sets as the race will have them: quali's lives halved, plus the new Hard quali doesn't list.
+    Practice and race lives are already the race's."""
+    if kind not in QUALI:
         return raw
     out = [{**s, "life": round(s["life"] * RACE_LIFE)} for s in raw]
     medium = next((s for s in out if s["compound"] == 17 and not s["wear"]), None)
-    if medium and not any(s["compound"] == 18 for s in out):
+    if medium and not sprint and not any(s["compound"] == 18 for s in out):
         out.append({**medium, "compound": 18, "life": round(medium["life"] * HARD[0]), "delta": medium["delta"] + HARD[1],
                     "fitted": False})
     return out
@@ -200,6 +203,9 @@ def _sets(raw, stints):
 def _options(sets, info):
     """Every dry one-stop they can run with these sets: two different compounds, each stint within its life."""
     laps, dry = info["laps"], [s for s in sets if not s["wet"] and s["mine"]]
+    if info.get("sprint"):
+        info["compounds"] = []  # nothing for check() to enforce
+        return _no_stop(dry, laps)
     info["compounds"] = sorted({s["compound"] for s in dry})
     if not laps or len(info["compounds"]) < 2:
         return [f"       dry compounds: {', '.join(info['compounds']) or 'none'}"]
@@ -221,8 +227,21 @@ def _options(sets, info):
     return out
 
 
+def _no_stop(dry, laps):
+    """A sprint has no compulsory stop, and nobody has stopped in one of his: which sets go the distance."""
+    out = ["NO-STOP OPTIONS (a sprint has no compulsory stop and no car has stopped in his sprints: one set to the flag)"]
+    for s in dry:
+        enough = laps and s["mine"] >= laps
+        out.append(f"       {s['name']}: lasts {s['mine']:.0f}" + (f", enough for {laps}" if enough else
+                                                                    f", short of {laps}" if laps else "")
+                   + f", {s['delta']:+.2f} s/lap")
+    return out
+
+
 def _field(db, info):
     """When the AI made its first stop in their dry races: when the pack around them will be pitting."""
+    if info.get("sprint"):
+        return []
     rows = db.execute("""select s.track, s.total_laps, r.stints from results r join sessions s on s.uid = r.session_uid
                          where s.type_id in (15, 16, 17) and s.total_laps >= 10 and r.status = 'Finished'""").fetchall()
     races = {}
