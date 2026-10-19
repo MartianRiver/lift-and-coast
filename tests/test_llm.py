@@ -3,6 +3,7 @@ import io
 import json
 import os
 import tempfile
+import time
 import unittest
 import urllib.error
 from pathlib import Path
@@ -90,6 +91,31 @@ class Calls(unittest.TestCase):
         with patch("urllib.request.urlopen", refuse), self.assertRaises(llm.LLMError) as e:
             llm.stream("some/model", ASKED, lambda t: None)
         self.assertEqual(str(e.exception), "HTTP 400: Invalid model")
+
+    def test_a_reply_that_hasnt_started_by_the_deadline_is_given_up(self):
+        def waiting():  # the provider holding the stream open with keep-alive comments
+            for _ in range(5):
+                time.sleep(0.02)
+                yield b": OPENROUTER PROCESSING\n"
+            yield from sse(chunk("Too late."))
+        with self.assertRaises(llm.LLMError) as e:
+            self.call(waiting(), first_by=0.05)
+        self.assertEqual(str(e.exception), "no answer in 0.05 s")
+        self.assertEqual(self.call(sse(chunk("Copy.")), first_by=0.05)[0], ["Copy."])
+
+    def test_a_silent_connection_times_out_at_the_deadline(self):
+        asked = []
+
+        class Silent(Reply):
+            def __iter__(self):
+                raise TimeoutError("timed out")
+
+        def connect(req, timeout):
+            asked.append(timeout)
+            return Silent([])
+        with patch("urllib.request.urlopen", connect), self.assertRaises(llm.LLMError) as e:
+            llm.stream("some/model", ASKED, lambda t: None, first_by=5)
+        self.assertEqual((asked, str(e.exception)), ([5], "no answer in 5 s"))
 
     def test_no_key_is_an_error_before_anything_is_sent(self):
         with patch.object(llm, "_env", lambda name: None), patch("urllib.request.urlopen") as sent:

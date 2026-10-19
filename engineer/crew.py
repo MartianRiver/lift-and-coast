@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from . import driver, log, quick, radiolog, usage, view
 from .calls import NORMAL, URGENT, Caller
 from .calls.common import call
-from .engineer import DEFAULT_MODEL, Engineer
+from .engineer import DEFAULT_MODEL, FALLBACK, Engineer
 from .pitwall import MODELS, PitWall
 from .radio import Radio
 
@@ -28,14 +28,15 @@ class Crew:
 
 
 def assemble(hub, state, model=DEFAULT_MODEL, engineer=True, mic=True, radio_mode="hold",
-             voice=None, fx=False, device=None, calls=True, live=True, team=MODELS, budget=None, buttons=None):
+             voice=None, fx=False, device=None, calls=True, live=True, team=MODELS, budget=None, buttons=None,
+             fallback=FALLBACK):
     """voice: engine[:voice] spec, or None for text only. mic=False still takes typed questions.
     team: the pit wall's models (lead, second opinion), or None for no team. live=False (a replay):
     spend is logged as dev, not against the session being replayed."""
     def at():
         return usage.where(state) if live else usage.NOWHERE
 
-    eng = Engineer(hub, state, model, role="engineer" if live else "dev", at=at) if engineer else None
+    eng = Engineer(hub, state, model, role="engineer" if live else "dev", at=at, fallback=fallback) if engineer else None
     radio = Radio(hub, mode=radio_mode, driver=lambda: view.player_identity(state), names=lambda: view.session_names(state), at=at,
                   **(buttons or {}))
     if eng:

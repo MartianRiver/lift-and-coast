@@ -63,9 +63,10 @@ function team(t) {
     <p class="muted">Past the budget, only urgent changes (safety car, rain, damage, slicks) and your questions get a run.</p>`;
 }
 
-function feed(f) {
+function feed(f, version) {
   const wrong = Object.keys(f.wrongFormats);
-  return `<dl class="kv"><dt>game version</dt><dd>${esc(f.gameVersion ?? '–')}</dd>
+  return `<dl class="kv"><dt>Lift and Coast</dt><dd>${esc(version ?? '–')}</dd>
+    <dt>game version</dt><dd>${esc(f.gameVersion ?? '–')}</dd>
     <dt>UDP format</dt><dd>${esc(f.format ?? '–')}</dd>
     <dt>packets</dt><dd>${f.packets}</dd><dt>decode errors</dt><dd>${f.decodeErrors}</dd>
     <dt>last packet</dt><dd>${f.silentSecs == null ? 'none yet' : `${f.silentSecs.toFixed(0)} s ago`}</dd>
@@ -83,5 +84,5 @@ export function render(d, error) {
     ${panel('Pit wall budget', team(d.team))}
     ${panel('Latency', latency(d.latency), 'wide')}
     ${panel('This session', counts(d.counts, d.errors))}
-    ${panel('Telemetry feed', feed(d.feed))}</div>`;
+    ${panel('Telemetry feed', feed(d.feed, d.version))}</div>`;
 }

@@ -16,6 +16,8 @@ from .llm import LLMError, api_key, stream
 _log = log.get("engineer")
 
 DEFAULT_MODEL = "moonshotai/kimi-k3"
+FALLBACK = "anthropic/claude-haiku-5.5"  # quick to the first word too, and not served by the same providers
+FIRST_WORD = 5  # s: live first words have been 1.5-3.6 s, then 6.3 and 17.7 s from a slow provider
 # acknowledgements get no reply, like on a real radio (yes/no left out: they may answer a question)
 ACKS = {"copy", "copy that", "ok", "okay", "mm hmm", "mhm", "roger", "understood",
         "got it", "thanks", "thank you", "cheers"}
@@ -28,17 +30,18 @@ HISTORY = 6  # exchanges (and radio calls) kept for follow-ups
 HISTORY_SECS = 90
 CHECKING = "Copy, checking."
 UNSURE = "Can't give you a solid number on that one."  # said when every sentence of a reply was held back
+LOST = "Lost the data on that one, ask me again."  # neither model answered
 SENTENCE = re.compile(r"[.!?](?=\s)")  # "0.7" and "P1." at the end of a chunk don't count
 
 SYSTEM = (Path(__file__).resolve().parent / "prompts" / "engineer.md").read_text()  # the live brief follows it
 
 
 class Engineer:
-    def __init__(self, hub, state, model=DEFAULT_MODEL, role="engineer", at=None):
+    def __init__(self, hub, state, model=DEFAULT_MODEL, role="engineer", at=None, fallback=FALLBACK):
         self.hub = hub
         self.role, self.at = role, at or (lambda: usage.where(state))  # what the spend is logged against
         self.state = state
-        self.model = model
+        self.model, self.fallback = model, fallback
         self.replies = deque(maxlen=30)
         self.error = None if api_key() is not None else "no OPENROUTER_API_KEY in .env, engineer is off"
         self._history = deque(maxlen=HISTORY)
@@ -142,11 +145,22 @@ class Engineer:
                 say(spoken[:m.end()].strip())
                 spoken = spoken[m.end():]
 
-        try:
-            stats = stream(self.model, messages, on_text, role=self.role, at=self.at(), why="question")
-        except LLMError as e:
-            _log.error("engineer call failed", exc=False, model=self.model, error=str(e))
-            return self._publish(reply, status="error", error=str(e))
+        stats = None
+        for model in dict.fromkeys(m for m in (self.model, self.fallback) if m):
+            try:
+                stats = stream(model, messages, on_text, role=self.role, at=self.at(),
+                               why="question" if model == self.model else "fallback", first_by=FIRST_WORD)
+                break
+            except LLMError as e:
+                _log.error("engineer call failed", exc=False, model=model, error=str(e), started=bool(reply["text"]))
+                failed = str(e)
+                if reply["text"]:  # part of the answer is out: another model would start it again
+                    break
+        if stats is None:
+            if said:
+                return self._publish(reply, status="error", error=failed)
+            self.speak(LOST, reply["at"])
+            return self._publish(reply, status="error", error=failed, text=LOST, local=True)
         reply["text"] = reply["text"].strip()
         if spoken.strip():
             say(spoken.strip())

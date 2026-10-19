@@ -1,4 +1,5 @@
 """Per-session recording and the archive catalogue, on synthetic packets in a temp folder."""
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -135,6 +136,74 @@ class Recording(unittest.TestCase):
         self.assertEqual([(r["uid"], r["wall0"]) for r in rows("recording")], [("666", first), ("666", second)])
         self.assertLess(first, second)
 
+
+
+class Schema(unittest.TestCase):
+    """The catalogue's user_version: upgraded a step at a time, and a newer one left alone."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        for p in [mock.patch.object(archive, "DATA", self.tmp), mock.patch.object(archive, "DB", self.tmp / "a.db")]:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def version(self):
+        db = sqlite3.connect(archive.DB)  # its own connection: only what was committed
+        try:
+            return db.execute("pragma user_version").fetchone()[0]
+        finally:
+            db.close()
+
+    def test_a_catalogue_from_0_1_is_upgraded_and_keeps_its_rows(self):
+        db = sqlite3.connect(archive.DB)
+        db.executescript(archive.SCHEMA)  # what 0.1 made, with no version on it
+        db.execute("insert into sessions (uid, track) values ('1', 'Austria')")
+        db.commit()
+        db.close()
+        db = archive.connect()
+        self.assertEqual(self.version(), len(archive.STEPS))
+        self.assertEqual([tuple(r) for r in db.execute("select uid, track from sessions")], [("1", "Austria")])
+
+    def test_each_step_runs_once(self):
+        steps = archive.STEPS + ["create table one (a int)", "create table two (a int)"]  # these fail if run twice
+        with mock.patch.object(archive, "STEPS", steps):
+            archive.connect().close()
+        self.assertEqual(self.version(), len(steps))
+        with mock.patch.object(archive, "STEPS", steps + ["alter table one add column b int"]):
+            archive.connect().close()
+            archive.connect().close()
+        self.assertEqual(self.version(), len(steps) + 1)
+        db = sqlite3.connect(archive.DB)
+        self.assertEqual([r[1] for r in db.execute("pragma table_info(one)")], ["a", "b"])
+        db.close()
+
+    def test_a_failed_step_leaves_the_catalogue_as_it_was(self):
+        archive.connect().close()
+        with mock.patch.object(archive, "STEPS", archive.STEPS + ["create table extra (a int); alter table nope add column b"]):
+            with self.assertRaises(sqlite3.Error):
+                archive.connect()
+        db = archive.connect()
+        self.assertEqual(self.version(), len(archive.STEPS))
+        self.assertNotIn("extra", [r[0] for r in db.execute("select name from sqlite_master")])
+
+    def test_an_up_to_date_catalogue_opens_while_something_else_writes(self):
+        archive.connect().close()
+        writer = sqlite3.connect(archive.DB)
+        writer.execute("begin immediate")  # the server's usage writer, mid-write
+        self.addCleanup(writer.close)
+        real = sqlite3.connect
+        with mock.patch.object(archive.sqlite3, "connect", lambda path, timeout: real(path, timeout=0.2)):
+            archive.connect().close()  # doesn't wait for the write lock
+
+    def test_a_newer_catalogue_opens_as_it_is(self):
+        db = archive.connect()
+        db.execute(f"pragma user_version = {len(archive.STEPS) + 3}")
+        db.execute("create table later (a int)")  # something a newer version added
+        db.commit()
+        db.close()
+        db = archive.connect()
+        self.assertEqual(self.version(), len(archive.STEPS) + 3)
+        self.assertEqual(db.execute("select count(*) from sessions").fetchone()[0], 0)
 
 
 class OldCatalogue(unittest.TestCase):

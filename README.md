@@ -61,6 +61,8 @@ While it's held, the server records from the computer's microphone: whichever in
 --no-calls                 only speak when spoken to
 --no-pitwall               no strategy team; the engineer and the code make the calls
 --engineer-model <id>      default moonshotai/kimi-k3: quick to the first word and consistent
+--engineer-fallback <id>   asked instead when the engineer model hasn't started answering in 5 s;
+                           default anthropic/claude-haiku-5.5, "none" to turn it off
 --pitwall-models <a,b>     lead and second opinion; default Claude Sonnet 5.5 and Gemini 3.8 Flash
 --pitwall-budget 2.0       the team's spending cap per session, in dollars
 ```
