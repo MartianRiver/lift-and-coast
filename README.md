@@ -22,16 +22,16 @@ I built it for myself. I play career mode on an Xbox with a MacBook Air next to 
 
 **It can only listen to the game.** The telemetry goes one way: the game sends what's happening, and nothing can be sent back. So the engineer can tell you to box and what to fit, but you still drive into the pits yourself, and the tyres you get are the ones set in the game's own pit menu. Change them there when the plan changes. The same goes for the fuel at the strategy screen, the ERS mode and anything else you'd set in the car: it can suggest, and you do it.
 
-**It only knows what the game sends.** It doesn't hear the game's own engineer, so the two can disagree. The game sends no corner names, so it talks in sectors and metres. Nothing about the race arrives until you're past the strategy screen, which is why the race plan is made after qualifying. In online sessions, other players can keep their car's data private, and then their fuel, tyre wear and damage aren't known.
+**It only knows what the game sends.** It doesn't hear the game's own engineer, so the two can disagree. The game sends no corner names, so it talks in sectors and metres. Nothing about the race arrives until you're past the strategy screen, which is why the race plan is made after qualifying. In online sessions, what you see of another player's car depends on their own "Your Telemetry" setting, which is restricted by default: their fuel, ERS, tyre wear and damage then all arrive as zero, so they're unknown.
 
-**Other limits for now:** the voice only runs on Apple Silicon Macs, it only speaks and understands English, the engineer needs an internet connection unless you run a model yourself, and it's been built and raced on 2025-regulation careers (the 2026 cars' active aero and overtake mode aren't used).
+**Other limits for now:** the voice only runs on Apple Silicon Macs (speech recognition and the voice run on MLX today; Windows and Linux are text-only until they get their own), it only speaks and understands English, the engineer needs an internet connection unless you run a model yourself, and it's been built and raced on 2025-regulation careers (the 2026 cars' active aero and overtake mode aren't used).
 
 ## What you need
 
 - F1 25 (including the 2026 Season Pack) or F1 24, on any platform. The game sends telemetry over your local network.
 - A computer on the same network with [uv](https://docs.astral.sh/uv/) installed. The text side (dashboard, typed questions, calls on screen, the strategy team) is plain Python and should run anywhere, though I've only run it on macOS.
-- For voice: an Apple Silicon Mac. Speech recognition and the engineer's voice run locally on MLX. You'll also need `brew install espeak-ng`.
-- An [OpenRouter](https://openrouter.ai) API key, or any OpenAI-compatible endpoint, including a model running on your own machine. With the default models a race costs a few tens of cents, and the strategy team has a per-session spending cap. What's sent to the model, and what stays on your computer: [PRIVACY.md](PRIVACY.md).
+- For voice, for now: an Apple Silicon Mac. Speech recognition and the engineer's voice run locally on MLX. You'll also need `brew install espeak-ng`.
+- An [OpenRouter](https://openrouter.ai) API key, or any OpenAI-compatible endpoint, including a model running on your own machine. Without one, the unprompted calls, the code's own strategy calls (box for slicks, the rain plan), the dashboard and the recording all still work; the answers and the strategy team are what need a model. With the default models a race costs a few tens of cents, and the strategy team has a per-session spending cap. What's sent to the model, and what stays on your computer: [PRIVACY.md](PRIVACY.md).
 
 ## Setup
 
