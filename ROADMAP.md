@@ -2,28 +2,15 @@
 
 What I'm working on and what I'd like to get to, grouped by the version it's meant for. A version is released once everything listed under it is done and has been through the checks in [docs/releasing.md](docs/releasing.md), including real races. Things move between versions when a race shows me something matters more; when that happens the release notes say so. If something here matters to you, or something's missing, open an issue.
 
-## 0.2: trust it, and report it when it goes wrong
-
-- **The whole radio on the race's timeline.** Your clips, the engineer's answers, its unprompted calls and its voice, all kept with when they happened, so a race can be gone through afterwards and the radio can be cut into game footage.
-- **What the models were sent and what they said,** and a log file, saved with each session.
-- **A debug bundle.** One file with the session, the radio, the model calls, the log and your setup, to look through yourself or attach to an issue. The dev tools can open it directly, so the moment can be replayed.
-- **When the model doesn't answer.** If the connection drops, the engineer currently goes quiet for up to a minute. It should give up after a few seconds, try a second model, and say on the radio that it lost the data.
-- **A quick brief on a second button.** One press, no talking: gaps and tyres in a race, the delta in qualifying, last lap against best in practice. It needs no model, so it also works when the connection doesn't.
-- **Gaps right after a pass.** For a moment after you pass someone, the brief can still show the gap from the lap before, with the wrong sign, and the strategy team reads that too.
-- **Numbers checked before they're said.** Every figure in the engineer's answer is matched against what it was given, a sentence at a time. One with a number that isn't there is held back instead of said, and shows up on the Radio tab. In one replay it told me a tyre was at 43% when the data said 39%.
-- **Which tyre, and why not the other.** When there's a stop to make, the brief lists every set you're allowed to fit, how much quicker each one is and how worn your worst tyre would be on it at the flag at your own wear rate, and which is the quickest that makes it. At Brazil the team called the Hard, I took the used Soft, and nothing on the radio said what the choice was between.
-- **Race prep that knows the weekend.** Tyre life as the race will have it, not as qualifying showed it (about twice as long), and a sprint planned without a stop.
-- **Red flags called as red flags,** with the free tyre change in the brief. In 0.1 a red flag came out as a safety car.
-- **Going back a version without losing anything.** The recordings already work with any version; the archive database gets a schema version so an older release can still open it.
-- The version on the dashboard and in the log, and the tests running on macOS, Linux and Windows on every push.
+0.2 (trusting what it says, and reporting it when it goes wrong) is out: what it brought is in [CHANGELOG.md](CHANGELOG.md).
 
 ## 0.3: setting it up, and choosing models
 
 - **Setup in the browser.** Step by step: who's driving, the game (the address to type in, and a light when telemetry arrives), your radio button, the OpenRouter key, models, voice, a mic check. Downloads for the speech model and the voices with progress, and what to check when nothing arrives from the game.
 - **Hear the voices first.** Every voice saying the same few lines, plain and through the radio filter, before you download one.
 - **Settings and an advanced section.** Pick a model for each job from everything on OpenRouter, or a local server, with its price; reasoning effort, the strategy team's budget, how much it says unprompted; and every prompt, with its versions and the notes on why each changed.
-- **Prompt versions.** Every change to a prompt becomes a new version with a note on what changed and why, and every answer records which version produced it. Moved from 0.2: they belong with the settings that show and edit them.
-- **Radio for videos.** Your radio and the engineer's for a stretch of a race, as audio tracks that start at a moment you can find in the footage (lights out, a lap line), with subtitles. Optionally with your own lines re-voiced. Moved from 0.2: the recording side is done, and 0.2 has the timeline it needs.
+- **Prompt versions.** Every change to a prompt becomes a new version with a note on what changed and why, and every answer records which version produced it.
+- **Radio for videos.** Your radio and the engineer's for a stretch of a race, as audio tracks that start at a moment you can find in the footage (lights out, a lap line), with subtitles. Optionally with your own lines re-voiced. The recording side and the race's timeline are done.
 - **Engineer personalities.** A handful to choose from in the settings, each with a few lines on how it talks: blunt and to the point, and it pushes back on a call it thinks is wrong; calm and steady; numbers first; quiet unless it matters. Each one comes with a voice that suits it and a default for how much it says unprompted, and the unprompted calls are worded in its style too. Only the way things are said changes: the numbers and the strategy calls stay the same, and every personality has to pass the model check before it's offered. They're styles, not impressions of real engineers. Moved from 0.5: a personality is a set of prompts, so they come with the prompt versions.
 - **What can I ask you?** Ask it on the radio and it tells you, briefly, the kinds of questions it's good at. Mostly for the first few races.
 - **The radio on Windows and Linux.** Speech recognition and the voice run on MLX today, so the radio only works on an Apple Silicon Mac. Windows and Linux need a local speech model and voice of their own, downloaded by the setup like the Mac's.

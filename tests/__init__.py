@@ -9,6 +9,7 @@ from engineer import archive, driver, radio, radiolog
 radiolog.CLIPS = radio.CLIPS = Path(tempfile.mkdtemp(prefix="re-radio-"))
 radiolog.LOG = radiolog.CLIPS / "messages.jsonl"
 archive.DB = Path(tempfile.mkdtemp(prefix="re-archive-")) / "archive.db"
+archive.SESSIONS = archive.DB.parent / "sessions"  # the catalogue finds recordings here when it heals paths
 driver.FILE = Path(tempfile.mkdtemp(prefix="re-driver-")) / "driver.json"
 
 
