@@ -49,10 +49,14 @@ def review(text):
     return m.group(1).upper() == "AGREE", m.group(2).strip()
 
 
-def section(wall, lap, tyres=None):
-    """PIT WALL lines for the engineer's brief: the plans, whether their tyres reach the stop, and the team's
-    latest call while it's fresh."""
-    out = ["PIT WALL (your strategy team: their call is the plan; relay it, don't make your own)"]
+CALLS = 6  # the team's calls so far, for the engineer to explain a change of plan
+
+
+def section(wall, lap, tyres=None, calls=False):
+    """PIT WALL lines for the engineer's brief: the plans, whether their tyres reach the stop, the team's
+    latest call while it's fresh, and (calls) every call that changed something this race."""
+    out = [driver.words("PIT WALL (your strategy team: their call is the plan; relay it, don't make your own. "
+                        "A call River makes himself overrides it)")]
     for k in "ABC":
         if k in wall.plans:
             out.append(f"  plan {k}{' (active)' if k == wall.active else ''}: {wall.plans[k]}")
@@ -67,6 +71,9 @@ def section(wall, lap, tyres=None):
         rev = next((n for n in reversed(wall.notes) if n["who"] == "review" and n.get("of") == last["id"]), None)
         if rev and rev.get("agree") is False:
             out.append(f"  (the second strategist disagrees: {rev['text']})")
+    made = [n for n in wall.notes if n["who"] == "lead" and n.get("call") and not n["call"].lower().startswith("no change")]
+    if calls and made:
+        out.append("  team's calls this race: " + " · ".join(f"L{n['lap']} {n['call']}" for n in made[-CALLS:]))
     if len(out) == 1:
         out.append("  no plan or call from the team yet")
     return out

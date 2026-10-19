@@ -10,7 +10,7 @@ What does leave your computer is what the engineer and the strategy team need to
 
 - the race as text, the same brief you can print with `dev brief`: positions, gaps, tyres, fuel, weather, the race log, and the names of the drivers in the session (in an online lobby that includes the other players' names);
 - your question as text, after speech-to-text. Never the audio;
-- the last few exchanges on the radio, so a follow-up question makes sense;
+- the last few exchanges on the radio, so a follow-up question makes sense, and what the engineer has said about tyres and stops this race, so it doesn't contradict itself;
 - the name and pronouns you gave it, so it talks to you rather than about "the driver";
 - for the strategy team, the brief you gave it ("damage control, few rewinds") and its own earlier notes from this race.
 

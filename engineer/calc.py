@@ -32,19 +32,22 @@ def lap_at(my, session, minutes, ref_ms):
     return int(done + minutes * 60000 / ref_ms) + 1
 
 
-def stint(crossings):
-    """Trailing crossings on the current set: same stop count and compound, with wear recorded."""
+def stint(crossings, stops=None):
+    """Trailing crossings on the current set: same stop count and compound, with wear recorded. With
+    `stops` (the car's stop count now): none if it has stopped since the last crossing."""
     out = []
     for x in reversed(crossings):
         if "wear" not in x or (out and (x["stops"] != out[0]["stops"] or x.get("tyre") != out[0].get("tyre"))):
             break
         out.insert(0, x)
+    if out and stops is not None and out[-1]["stops"] != stops:
+        return []  # the last crossings are the old set's
     return out
 
 
-def wear_rates(crossings, window=5):
+def wear_rates(crossings, window=5, stops=None):
     """%/lap per wheel over the last `window` laps of this stint, or None with < 2 laps of data."""
-    xs = stint(crossings)[-(window + 1):]
+    xs = stint(crossings, stops)[-(window + 1):]
     if len(xs) < 2 or xs[-1]["lap"] == xs[0]["lap"]:
         return None
     n = xs[-1]["lap"] - xs[0]["lap"]

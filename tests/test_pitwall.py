@@ -5,6 +5,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
+from engineer import engineer as eng_module
 from engineer.calls import Caller, URGENT
 from engineer.calls.common import call
 from engineer.engineer import CHECKING, Engineer
@@ -116,6 +117,21 @@ class Triggers(unittest.TestCase):
         self.assertTrue(any(r["key"][0] == "late" for r in got))
         self.assertFalse(any(r["key"][0] == "late" for r in triggers.scan(b, {"t0": b.now - 100}, box=lap)))
 
+    def test_no_tyre_reasons_in_the_pit_lane(self):
+        b = Race(self.st)
+        lap = b.my["currentLapNum"]
+        t = {"wheel": 3, "lap": lap, "now": 69, "rate": 8.0, "at": 77, "worn": lap, "spread": True, "sectors": [],
+             "save": None, "manage": None}
+        kinds = lambda: {r["key"][0] for r in triggers._tyres(b) + triggers._target(b, lap)}
+        with mock.patch.object(triggers.strategy, "worn_in", return_value=(3, 1)), \
+                mock.patch.object(triggers, "tyre_target", return_value=(t, "the planned stop")):
+            self.assertEqual(kinds(), {"worn", "target"})
+            b.my["pitStatus"] = 1
+            try:
+                self.assertEqual(kinds(), set())
+            finally:
+                b.my["pitStatus"] = 0
+
     def test_race_start_asks_for_plans(self):
         w = _wall(self.st)
         w.step()
@@ -134,6 +150,34 @@ class Questions(unittest.TestCase):
                 self.assertEqual(w.routes(q), "team", q)
             for q in ["How are my tyres?", "Gap to Alonso?", "Where am I losing time?"]:
                 self.assertIsNone(w.routes(q), q)
+
+    def test_a_call_he_makes_himself(self):
+        w = _wall(self.st)
+        with mock.patch.object(wall_mod, "PIT_ENTRY", 2.0):
+            for t in ["Mediums on nine.", "Boxing this lap", "Staying out.", "Inters."]:
+                self.assertEqual(w.routes(t), "called", t)
+            for t in ["Should I box for mediums", "When do I box?", "Do we stay out?", "Box or stay out?"]:
+                self.assertEqual(w.routes(t), "team", t)
+            self.assertIsNone(w.routes("Tires feel great."))
+        with mock.patch.object(wall_mod, "PIT_ENTRY", 0.0):
+            self.assertEqual(w.routes("Mediums on nine."), "called")  # his call even at the pit entry
+
+    def test_the_engineer_confirms_his_call_and_the_team_plans_around_it(self):
+        w = _wall(self.st)
+
+        def stream(model, messages, on_text, **kw):
+            on_text("Copy, Mediums end of nine. ")
+            return {"firstMs": 1}
+        with mock.patch.object(eng_module, "api_key", lambda: "key"):
+            eng = Engineer(Hub(), self.st)
+        eng.wall, eng.speak = w, lambda *a: None
+        with mock.patch.object(wall_mod, "PIT_ENTRY", 2.0), mock.patch.object(eng_module, "stream", stream):
+            eng._answer({"id": "1", "text": "Mediums on nine."})
+        self.assertEqual(eng.replies[-1]["text"], "Copy, Mediums end of nine.")
+        [r] = [r for r in w.pending if r["key"][0] == "called"]
+        self.assertTrue(r["urgent"])
+        self.assertIn('"Mediums on nine."', r["text"])
+        self.assertIn('"Copy, Mediums end of nine."', r["text"])
 
     def test_no_time_to_ask_near_the_box(self):
         w = _wall(self.st)
@@ -252,6 +296,14 @@ class Section(unittest.TestCase):
         self.assertIn("team's call (1 lap ago): Stay out", text)
         self.assertIn("second strategist disagrees: box now", text)
         self.assertNotIn("team's call", "\n".join(notes.section(w, 10 + notes.FRESH_LAPS + 1)))
+
+    def test_the_engineer_sees_every_call_that_changed_something(self):
+        w = _wall()
+        for i, (lap, call) in enumerate([(1, "Soft to Hard, box end of L8"), (4, "No change"), (9, "Box this lap for mediums")]):
+            w._apply({"id": f"n{i}", "who": "lead", "lap": lap, "stops": 0, **notes.lead(f"CALL: {call}\nSAY: nothing")}, publish=False)
+        line = "  team's calls this race: L1 Soft to Hard, box end of L8 · L9 Box this lap for mediums"
+        self.assertIn(line, notes.section(w, 16, calls=True))
+        self.assertNotIn(line, notes.section(w, 16))  # the team has its own notes
 
 
 class Relay(unittest.TestCase):

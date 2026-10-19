@@ -70,7 +70,7 @@ def stop_at(sets, rate=4.5, lap=13, total=25, run=(), weekend=(15,), kind=15, rr
     st = SimpleNamespace(tyre_sets={0: {"tyreSetData": data, "fittedIdx": 0}}, history={0: hist},
                          laps=SimpleNamespace(cars={0: []}))
     s = {"totalLaps": total, "sessionType": kind, "weekendStructure": list(weekend), "numSessionsInWeekend": len(weekend)}
-    b = SimpleNamespace(st=st, s=s, me=0, race=True, my={"currentLapNum": lap, "pitStatus": pit},
+    b = SimpleNamespace(st=st, s=s, me=0, race=True, my={"currentLapNum": lap, "pitStatus": pit, "numPitStops": 0},
                         status=lambda idx=0: {"visualTyreCompound": MEDIUM},
                         damage=lambda: {"tyresWear": [20, rr, 20, 20]})
     b.sprint = lambda: race.Race.sprint(b)
@@ -118,7 +118,7 @@ class Target(unittest.TestCase):
     """Silverstone L11: RL 37%, 4.5%/lap, the extra over the field in S3."""
     def target(self, lap, save):
         b = SimpleNamespace(damage=lambda: {"tyresWear": [37, 10, 10, 10]}, st=SimpleNamespace(laps=SimpleNamespace(cars={})),
-                            me=0, my={"currentLapNum": 11})
+                            me=0, my={"currentLapNum": 11, "numPitStops": 0})
         with mock.patch.object(calc, "wear_rates", return_value=[4.5, 1, 1, 1]), \
                 mock.patch.object(strategy, "_saving", return_value=([3], False, save)):
             return strategy.target(b, lap)

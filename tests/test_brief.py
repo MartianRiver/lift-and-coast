@@ -217,6 +217,12 @@ class Gaps(unittest.TestCase):
         rates = calc.wear_rates(self.st.laps.cars[0])
         self.assertAlmostEqual(rates[3], 3.0, places=1)  # FR
 
+    def test_no_wear_rate_until_the_new_set_has_laps(self):
+        xs = self.st.laps.cars[0]
+        stops = xs[-1]["stops"]
+        self.assertIsNotNone(calc.wear_rates(xs, stops=stops))
+        self.assertIsNone(calc.wear_rates(xs, stops=stops + 1))  # just stopped: the rate would be the old set's
+
     def test_pit_loss_from_observed_stop(self):
         loss, n = calc.pit_loss(self.st.laps, self.st.history)
         self.assertEqual(n, 1)

@@ -79,7 +79,7 @@ class NoAnswer(unittest.TestCase):
             if fails:
                 raise fails
             return {"model": model, "firstMs": 1}
-        eng = Engineer(Hub(), SimpleNamespace(lock=threading.Lock(), session_uid=1), model="first/model",
+        eng = Engineer(Hub(), SimpleNamespace(lock=threading.Lock(), session_uid=1, latest={}), model="first/model",
                        at=lambda: ("s", 0), fallback=fallback)
         heard = []
         eng.speak = lambda text, at=None: heard.append(text)
@@ -115,6 +115,38 @@ class NoAnswer(unittest.TestCase):
     def test_without_a_fallback_one_model_is_tried(self):
         asked, heard, _ = self.answer({"first/model": ("", LLMError("HTTP 500: oops"))}, fallback=None)
         self.assertEqual((len(asked), heard), (1, [LOST]))
+
+
+class Told(unittest.TestCase):
+    """What it said about tyres and stops stays in front of it all race; the rest goes after HISTORY_SECS."""
+    def test_tyre_and_stop_lines_are_kept_all_race(self):
+        from engineer.race import Race
+        from tests.test_brief import raced
+        st, sent = raced(6).st, []
+
+        def stream(model, messages, on_text, **kw):
+            sent.append(messages)
+            on_text("Copy. ")
+            return {"firstMs": 1}
+        with mock.patch.object(eng_module, "api_key", lambda: "key"):
+            eng = Engineer(Hub(), st)
+        eng.speak = lambda *a: None
+        eng.said("Box end of lap 8 for the Hard.")
+        eng.said("Verstappen's 2 seconds behind.")
+        with mock.patch.object(eng_module, "brief", SimpleNamespace(build=lambda st: "BRIEF")), \
+                mock.patch.object(eng_module, "stream", stream), mock.patch.object(eng_module, "HISTORY_SECS", -1):
+            eng._answer({"id": "1", "text": "Why did you say hards?"})
+            was, st.session_uid = st.session_uid, 12345
+            try:
+                eng._answer({"id": "2", "text": "Why did you say hards?"})
+            finally:
+                st.session_uid = was
+        lap = Race(st).my["currentLapNum"]
+        system = sent[0][0]["content"]
+        self.assertIn(f"STOPS THIS RACE (oldest first)\n  L{lap}: Box end of lap 8 for the Hard.", system)
+        self.assertNotIn("Verstappen", system)
+        self.assertEqual(len(sent[0]), 2)  # the exchanges themselves are past HISTORY_SECS
+        self.assertNotIn("STOPS THIS RACE", sent[1][0]["content"])  # another session's
 
 
 class Replay(unittest.TestCase):

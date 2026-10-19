@@ -22,6 +22,8 @@ This version is about trusting what the engineer says and finding out what went 
 
 When the engineer's model is slow, the same question (the race brief, your question, the last few exchanges) now goes to a second model too, Claude Haiku 5.5 unless you pick another. [PRIVACY.md](PRIVACY.md) has the detail; `--engineer-fallback none` turns it off.
 
+Default models: `moonshotai/kimi-k3` for the engineer, with `anthropic/claude-haiku-5.5` when it hasn't answered in 5 s; `anthropic/claude-sonnet-5.5` and `google/gemini-3.8-flash` for the strategy team.
+
 ## 0.1.0 (2026-10-16)
 
 First public version. A voice race engineer for F1 25 and F1 24 on UDP telemetry: ask it things over the radio, unprompted calls, a strategy team, race prep, a dashboard, and dev tools over your recorded sessions. The voice needs an Apple Silicon Mac; the rest should run anywhere Python does (only tried on macOS so far).

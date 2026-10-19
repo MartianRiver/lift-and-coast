@@ -28,6 +28,9 @@ ASKED_SECS = 30
 HISTORY = 6  # exchanges (and radio calls) kept for follow-ups
 # ...and only this recent: older answers got repeated as if current ("the set's fresh" 10 laps into it)
 HISTORY_SECS = 90
+# ...but what it has said about tyres and stops is kept all race, so it can't deny a call it made
+TOLD = 8
+TYRE_TALK = re.compile(r"\b(?:softs?|mediums?|hards?|inters|intermediates|wets|box|boxing|stop|stopping|pit|pitting|stay out|plan [abc])\b", re.I)
 CHECKING = "Copy, checking."
 UNSURE = "Can't give you a solid number on that one."  # said when every sentence of a reply was held back
 LOST = "Lost the data on that one, ask me again."  # neither model answered
@@ -45,6 +48,7 @@ class Engineer:
         self.replies = deque(maxlen=30)
         self.error = None if api_key() is not None else "no OPENROUTER_API_KEY in .env, engineer is off"
         self._history = deque(maxlen=HISTORY)
+        self._told = deque(maxlen=TOLD)  # (session, lap, what it said)
         self._session = None
         self._queue = queue.Queue()
         self._answering = False
@@ -79,6 +83,20 @@ class Engineer:
     def said(self, text):
         """A call made unprompted, so "what do you mean?" has something to follow up."""
         self._history.append((time.time(), None, text))
+        self._keep(text)
+
+    def _keep(self, text):
+        if not TYRE_TALK.search(text):
+            return
+        with self.state.lock:
+            lap = self.state.latest.get(2)
+            me = lap and lap["header"]["playerCarIndex"]
+            n = lap["lapData"][me]["currentLapNum"] if lap and me < len(lap["lapData"]) else None
+            self._told.append((self.state.session_uid, n, text))
+
+    def _told_section(self, session):
+        lines = [f"  L{lap}: {text}" if lap else f"  {text}" for s, lap, text in self._told if s == session]
+        return lines and "\n\nWHAT YOU'VE SAID ON THE RADIO ABOUT TYRES AND STOPS THIS RACE (oldest first)\n" + "\n".join(lines)
 
     def _work(self):
         while True:
@@ -117,6 +135,7 @@ class Engineer:
             return self._publish(reply, status="done", text="No data from the car yet.", local=True)
         if self.wall:
             data += "\n\n" + self.wall.section()
+        data += self._told_section(session) or ""
 
         now = time.time()
         recent = [(q, a) for at, q, a in self._history if now - at <= HISTORY_SECS]
@@ -170,9 +189,12 @@ class Engineer:
         # what was actually said, so a follow-up (or the team) doesn't build on a held-back figure
         heard = " ".join(said) if held else reply["text"]
         self._history.append((time.time(), _question(msg), heard))
+        self._keep(heard)
         self._publish(reply, status="done", held=held or None, **stats)
         if route == "now":  # no time to ask: the team looks at what we said
             self.wall.answered(msg["text"], heard)
+        elif route == "called":
+            self.wall.called(msg["text"], heard)
 
     def _publish(self, reply, **changes):
         reply.update(changes)

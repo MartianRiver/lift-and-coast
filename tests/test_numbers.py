@@ -71,7 +71,7 @@ class HeldBack(unittest.TestCase):
             for word in reply.split(" "):
                 on_text(word + " ")
             return {"firstMs": 1}
-        eng = Engineer(Hub(), SimpleNamespace(lock=threading.Lock(), session_uid=1), at=lambda: ("s", 0))
+        eng = Engineer(Hub(), SimpleNamespace(lock=threading.Lock(), session_uid=1, latest={}), at=lambda: ("s", 0))
         eng.wall = wall
         heard = []
         eng.speak = lambda text, at=None: heard.append(text)
