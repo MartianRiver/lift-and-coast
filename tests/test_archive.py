@@ -61,6 +61,18 @@ class Recording(unittest.TestCase):
         laps = db.execute("select lap, lap_ms, s3_ms from laps order by lap").fetchall()
         self.assertEqual([tuple(r) for r in laps], [(1, 66000, 21000), (2, 65500, 20500)])
 
+    def test_packets_that_arrive_while_the_server_stops_are_dropped(self):
+        rec = SessionRecorder(self.tmp / "sessions")
+        rec.write(session(444))
+        finish = archive.finish
+
+        def busy(path, started):  # the game keeps sending while the last file is archived
+            rec.write(session(444))
+            finish(path, started)
+        with mock.patch.object(archive, "finish", busy):
+            rec.close(wait=True)
+        self.assertEqual(list((self.tmp / "sessions").glob("*.f1cap")), [])
+
     def test_finished_file_is_compressed_and_still_readable(self):
         rec = SessionRecorder(self.tmp / "sessions")
         rec.write(session(333))

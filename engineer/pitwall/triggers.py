@@ -39,9 +39,13 @@ def _safety_car(b, mem):
     seen, out = mem.setdefault("events", set()), []
     for ev in b.st.events:
         k = (ev["sessionTime"], ev["code"])
-        if ev["code"] != "SCAR" or k in seen:
+        if ev["code"] not in ("SCAR", "RDFL") or k in seen:
             continue
         seen.add(k)
+        if ev["code"] == "RDFL":
+            out.append(reason(("red", ev["sessionTime"]), "red flag: free tyre change before the standing restart, "
+                              "which set for the laps left?", urgent=True))
+            continue
         d = ev["details"]
         if d["eventType"] == 0:
             vsc = d["safetyCarType"] == 2

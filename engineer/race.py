@@ -73,6 +73,15 @@ class Race:
         """Laps still to start after this one."""
         return self.s["totalLaps"] - self.my["currentLapNum"]
 
+    def red_flag(self):
+        """The red flag still in force (its restart's lights haven't gone out yet), else None."""
+        for ev in reversed(self.st.events):
+            if ev["code"] == "LGOT":
+                return None
+            if ev["code"] == "RDFL":
+                return ev
+        return None
+
     def battery(self):
         status = self.status()
         return status and status["ersStoreEnergy"] / calc.ERS_STORE

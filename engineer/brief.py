@@ -63,6 +63,9 @@ class Brief:
 
     def _situation(self):
         """Safety car phase and what matters for the restart, spelled out so it isn't missed."""
+        if self.r.red_flag():
+            return ["SITUATION RED FLAG: race suspended · everyone gets a free tyre change before it restarts from the grid "
+                    "with a standing start · the game can skip laps before the restart"]
         ev = next((e for e in reversed(self.st.events) if e["code"] == "SCAR"), None)
         if not ev:
             return []

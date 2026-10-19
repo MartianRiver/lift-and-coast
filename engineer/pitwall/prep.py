@@ -94,6 +94,8 @@ def _fuel(db, info):
     return out + _suggest(races, info, lap_kg)
 
 
+RACE_LIFE = 0.5    # a set's life in the race against what quali says for it, every compound and track
+HARD = (1.3, 500)  # the new Hard every race adds: life × the new Medium's, ms/lap slower than it
 FLOOR = 0.3  # laps of fuel over the target left at the flag: they've never needed to save fuel
 
 
@@ -139,8 +141,8 @@ def _tyres(db, last, info):
             out.append(f"       his dry numbers all come from the top 10; from P{info['grid']} the first stint is in traffic, "
                        "where dirty air wears tyres faster")
     if last["sets"]:
-        sets = _sets(last["sets"], stints)
-        out.append("SETS   he has (life = the game's estimate; s/lap against the set he ended the session on):")
+        sets = _sets(race_sets(last["sets"], last["type_id"] in RACES), stints)
+        out.append("SETS   he has (life = the game's estimate for the race; s/lap against the set he ended the session on):")
         for x in sets:
             mine = f", ≈{x['mine']:.0f} laps at his rate" if x["mine"] else ""
             out.append(f"       {x['name']}{' ×' + str(x['n']) if x['n'] > 1 else ''}: {x['delta']:+.2f} s/lap, life {x['life']}{mine}")
@@ -161,6 +163,18 @@ def _vs_field(stints):
         if group:
             out.append(f"       {'wet' if wet else 'dry'}: " + " · ".join(
                 f"{w} {min(g[i] for g in group):.1f}–{max(g[i] for g in group):.1f}×" for i, w in enumerate(WHEELS)))
+    return out
+
+
+def race_sets(raw, race):
+    """The sets as the race will have them: quali's lives halved, plus the new Hard quali doesn't list."""
+    if race:
+        return raw
+    out = [{**s, "life": round(s["life"] * RACE_LIFE)} for s in raw]
+    medium = next((s for s in out if s["compound"] == 17 and not s["wear"]), None)
+    if medium and not any(s["compound"] == 18 for s in out):
+        out.append({**medium, "compound": 18, "life": round(medium["life"] * HARD[0]), "delta": medium["delta"] + HARD[1],
+                    "fitted": False})
     return out
 
 
