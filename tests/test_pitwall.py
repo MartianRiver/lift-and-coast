@@ -178,6 +178,21 @@ class Prep(unittest.TestCase):
         self.assertIsNone(prep.check({"start": "Medium new", "call": "Medium start, box L15-18 for the new Soft"}, info))
         self.assertIn("which set", prep.check({"start": "Soft", "call": "Soft start, one stop"}, info))
 
+    def test_quali_sets_as_the_race_will_have_them(self):
+        from engineer.pitwall import prep
+        # Monza quali said Soft 18, Medium 25; the race then gave Soft 9, Medium 12, Hard 17
+        quali = [{"compound": 16, "wear": 0, "life": 18, "delta": 0, "fitted": True},
+                 {"compound": 17, "wear": 0, "life": 25, "delta": 460, "fitted": False},
+                 {"compound": 7, "wear": 0, "life": 52, "delta": 4240, "fitted": False}]
+        race = prep.race_sets(quali, race=False)
+        self.assertEqual([(s["compound"], s["life"]) for s in race], [(16, 9), (17, 12), (7, 26), (18, 16)])
+        self.assertEqual(race[-1]["delta"], 960)
+        self.assertIs(prep.race_sets(race, race=True), race)  # a race's own sets are already the race's
+        with mock.patch.object(prep.profile, "tyre_life", lambda db: []):
+            text = "\n".join(prep._tyres(None, {"sets": quali, "type_id": 9}, {"laps": 19, "grid": 4}))
+        self.assertIn("Soft new: +0.00 s/lap, life 9", text)
+        self.assertIn("Hard new: +0.96 s/lap, life 16", text)
+
     def test_fuel_from_conditions_not_whole_races(self):
         from engineer.pitwall import prep
         races = [{"lap1": -0.06, "dry": 0.0, "dryLow": -0.02, "wet": None, "sc": 0.27},   # dry, with a safety car

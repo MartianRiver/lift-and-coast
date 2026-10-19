@@ -37,7 +37,6 @@ class Caller:
         self.state, self.hub, self.busy, self.said = state, hub, busy, said
         self.scan = scan     # False: only say what's pushed (the team's calls), nothing of our own
         self.team = False    # the pit wall owns the strategy calls
-        self._pushed = []
         self.at = at  # fn -> usage.where(): record delivery timings (live only, not replays)
         self.sent = deque(maxlen=30)
         self._n = 0
@@ -45,7 +44,7 @@ class Caller:
         self._reset(None)
 
     def _reset(self, uid):
-        self._uid, self.mem, self.queue = uid, {}, []
+        self._uid, self.mem, self.queue, self._pushed = uid, {}, [], []
         self._flat_since, self._last_out = None, -1e9
 
     def push(self, calls):

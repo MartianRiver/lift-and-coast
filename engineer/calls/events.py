@@ -54,7 +54,9 @@ def safety_car(b, mem):
         if k in seen:
             continue
         seen.add(k)
-        if ev["code"] == "SCAR":
+        if ev["code"] == "RDFL":
+            out.append(call(("red", ev["sessionTime"]), "sc", URGENT, lambda b: "Red flag, red flag.", ttl=20))
+        elif ev["code"] == "SCAR" and not b.red_flag():  # the game runs the SC phases through a red flag too
             out += _phase(b, ev["details"])
     return out
 
@@ -64,7 +66,7 @@ def _phase(b, d):
     vsc = kind == 2
     n = b.s["numVirtualSafetyCarPeriods" if vsc else "numSafetyCarPeriods"]
     if phase == 0:
-        return [call(("sc", kind, n), "sc", URGENT, lambda b: ("Virtual safety car." if vsc else "Safety car, safety car.") + _sc_stop(b, kind), ttl=20)]
+        return [call(("sc", kind, n), "sc", URGENT, lambda b: None if b.red_flag() else ("Virtual safety car." if vsc else "Safety car, safety car.") + _sc_stop(b, kind), ttl=20)]
     if phase == 3 and not vsc:
         return [call(("green", n), "sc", URGENT, lambda b: "Green, green.", ttl=6)]
     if phase in (1, 2):

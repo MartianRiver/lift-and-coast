@@ -128,6 +128,9 @@ class Race:
                 self.history(t)
             t += step
 
+    def event(self, t, code, details=b""):
+        self.send(3, t, eventStringCode=code, eventDetails=details.ljust(EVENT_DETAILS_SIZE, b"\0"))
+
     def flashback(self, to):
         details = struct.pack("<If", 0, to).ljust(EVENT_DETAILS_SIZE, b"\0")
         self.send(3, to, eventStringCode="FLBK", eventDetails=details)
