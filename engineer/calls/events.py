@@ -54,7 +54,9 @@ def safety_car(b, mem):
         if k in seen:
             continue
         seen.add(k)
-        if ev["code"] == "SCAR":
+        if ev["code"] == "RDFL":
+            out.append(call(("red", ev["sessionTime"]), "sc", URGENT, lambda b: "Red flag, red flag.", ttl=20))
+        elif ev["code"] == "SCAR" and not b.red_flag():  # the game runs the SC phases through a red flag too
             out += _phase(b, ev["details"])
     return out
 
@@ -64,7 +66,7 @@ def _phase(b, d):
     vsc = kind == 2
     n = b.s["numVirtualSafetyCarPeriods" if vsc else "numSafetyCarPeriods"]
     if phase == 0:
-        return [call(("sc", kind, n), "sc", URGENT, lambda b: ("Virtual safety car." if vsc else "Safety car, safety car.") + _sc_stop(b, kind), ttl=20)]
+        return [call(("sc", kind, n), "sc", URGENT, lambda b: None if b.red_flag() else ("Virtual safety car." if vsc else "Safety car, safety car.") + _sc_stop(b, kind), ttl=20)]
     if phase == 3 and not vsc:
         return [call(("green", n), "sc", URGENT, lambda b: "Green, green.", ttl=6)]
     if phase in (1, 2):
@@ -106,12 +108,19 @@ def conditions(b, mem):
     if dmg:
         now, before = hurt(dmg), mem.get("hurt", {})
         mem["hurt"] = now
+        if any(v < before.get(k, 0) for k, v in now.items()) or before.keys() - now.keys():
+            mem.pop("damage said", None)  # a flashback undid it: the same damage again is news
         if any(v >= before.get(k, 0) + 2 for k, v in now.items()):  # a flashback lowers it and re-arms
-            out.append(call(("damage", tuple(sorted(now.items()))), "damage", NORMAL, _damage, ttl=40))
+            out.append(call(("damage", tuple(sorted(now.items()))), "damage", NORMAL, lambda b: _damage(b, mem), ttl=40))
     return out
 
 
-def _damage(b):
+def _damage(b, mem):
+    """Rebuilt when it's said, so two hits close together can come out the same: say that once."""
     dmg = b.damage()
     parts = hurt(dmg) if dmg else {}
-    return "Damage: " + ", ".join(f"{k} {v}%" for k, v in parts.items()) + "." if parts else None
+    text = "Damage: " + ", ".join(f"{k} {v}%" for k, v in parts.items()) + "." if parts else None
+    if text == mem.get("damage said"):
+        return None
+    mem["damage said"] = text
+    return text

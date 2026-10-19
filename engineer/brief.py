@@ -63,6 +63,9 @@ class Brief:
 
     def _situation(self):
         """Safety car phase and what matters for the restart, spelled out so it isn't missed."""
+        if self.r.red_flag():
+            return ["SITUATION RED FLAG: race suspended · everyone gets a free tyre change before it restarts from the grid "
+                    "with a standing start · the game can skip laps before the restart"]
         ev = next((e for e in reversed(self.st.events) if e["code"] == "SCAR"), None)
         if not ev:
             return []
@@ -296,7 +299,52 @@ class Brief:
             out += self._free_stop(loss[0])
         if not neutral:  # gaps mean nothing behind the safety car
             out += self._undercut()
-        return out
+        return out + self._stop()
+
+    def _stop(self):
+        p = strategy.dry_stop(self.r)
+        if not p:
+            return []
+        rule = (f"the second compound is still owed, so not {'/'.join(tyre(c) for c in sorted(p['run']))}"
+                if p["owed"] else "any set")
+        how = (f"wear = your {WHEELS[p['wheel']]} at the flag at its rate this stint, scaled to each compound's life"
+               if p["wheel"] is not None else "life = the set's own estimate")
+        sets = " · ".join(f"{self._set(o)} {abs(o['gain']):.2f} s/lap {'quicker' if o['gain'] > 0 else 'slower'}, "
+                          + (f"≈{o['at_flag']:.0f}% at the flag" if o["at_flag"] is not None else ("lasts" if o["lasts"] else "short"))
+                          for o in p["options"])
+        out = [f"STOP     if you box this lap ({p['left']} laps after it; {rule}; pace = the set's estimate vs your fitted set; {how}): {sets}"]
+        pick, top = p["pick"], p["options"][0]
+        if not pick:
+            out.append(f"         → none of them reaches the flag under {strategy.WORN}% (worn out) from this lap")
+        else:
+            line = f"         → {self._set(pick)}: the quickest that reaches the flag under {strategy.WORN}% (worn out)"
+            if pick is not top:
+                line += f"; the {self._set(top)} is {top['gain'] - pick['gain']:.2f} s/lap quicker but " + (
+                    f"reaches ≈{top['at_flag']:.0f}%" if top["at_flag"] is not None else "won't last")
+            elif len(p["options"]) > 1:
+                line += f", {pick['gain'] - p['options'][1]['gain']:.2f} s/lap quicker than the {self._set(p['options'][1])}"
+            out.append(line)
+        return out + self._stop_field()
+
+    def _set(self, o):
+        state = "new" if not o["wear"] else f"used {o['wear']}%"
+        return f"{tyre(o['compound'])} {state}"
+
+    def _stop_field(self):
+        """What the others took at their stops, and what the cars near you are on."""
+        stopped, near, mine = [], [], self.r.pos(self.me)
+        for i in self.r.active():
+            if i == self.me:
+                continue
+            c = self.r.status(i)["visualTyreCompound"]
+            if self.lap_pkt["lapData"][i]["numPitStops"]:
+                stopped.append(c)
+            elif abs(self.r.pos(i) - mine) <= 3:
+                near.append(c)
+        count = lambda cs: ", ".join(f"{tyre(c)} ×{cs.count(c)}" for c in sorted(set(cs)))
+        parts = ([f"cars that have stopped, now on: {count(stopped)}"] if stopped else [])
+        parts += [f"not stopped yet, within 3 places of you: {count(near)}"] if near else []
+        return ["         " + " · ".join(parts)] if parts else []
 
     def _undercut(self):
         """What new tyres were worth to the cars that stopped, and the undercut range from it (from

@@ -63,14 +63,36 @@ function team(t) {
     <p class="muted">Past the budget, only urgent changes (safety car, rain, damage, slicks) and your questions get a run.</p>`;
 }
 
-function feed(f) {
+function feed(f, version) {
   const wrong = Object.keys(f.wrongFormats);
-  return `<dl class="kv"><dt>game version</dt><dd>${esc(f.gameVersion ?? '–')}</dd>
+  return `<dl class="kv"><dt>Lift and Coast</dt><dd>${esc(version ?? '–')}</dd>
+    <dt>game version</dt><dd>${esc(f.gameVersion ?? '–')}</dd>
     <dt>UDP format</dt><dd>${esc(f.format ?? '–')}</dd>
     <dt>packets</dt><dd>${f.packets}</dd><dt>decode errors</dt><dd>${f.decodeErrors}</dd>
     <dt>last packet</dt><dd>${f.silentSecs == null ? 'none yet' : `${f.silentSecs.toFixed(0)} s ago`}</dd>
     ${wrong.length ? `<dt>wrong formats</dt><dd>${esc(wrong.join(', '))}</dd>` : ''}</dl>
     <p class="muted">Packet rates and sizes are on the Packets tab.</p>`;
+}
+
+// the debug bundle form: kept here so a poll's re-render doesn't lose what's typed
+export const bundle = { note: '', audio: true, telemetry: true, state: 'idle', files: [], folder: '', error: '' };
+
+function bundlePanel() {
+  const b = bundle;
+  const mb = (n) => `${(n / 1e6).toFixed(1)} MB`;
+  const result = {
+    idle: '',
+    making: '<p class="muted" role="status">Making it… a long race takes about half a minute.</p>',
+    error: `<p class="bad" role="alert">Couldn't make it: ${esc(b.error)}</p>`,
+    done: `<p role="status">Saved in <code>${esc(b.folder)}</code>${b.files.length > 1 ? `, in ${b.files.length} parts: attach them all` : ''}:</p>
+      <ul>${b.files.map((f) => `<li><a href="/api/bundle?name=${encodeURIComponent(f.name)}" download>${esc(f.name)}</a> <span class="muted">${mb(f.bytes)}</span></li>`).join('')}</ul>`,
+  }[b.state];
+  return `<div class="bundle"><p class="muted">One file with this session's recording, the radio, what the models were sent and said, the log and your setup. It stays on this computer until you attach it to an issue yourself.</p>
+    <label for="bundleNote">What went wrong</label>
+    <textarea id="bundleNote" rows="2" placeholder="e.g. it said 43% for the rear-left on lap 10">${esc(b.note)}</textarea>
+    <label><input type="checkbox" id="bundleAudio" ${b.audio ? 'checked' : ''}> radio audio (your voice and the engineer's)</label>
+    <label><input type="checkbox" id="bundleTelemetry" ${b.telemetry ? 'checked' : ''}> telemetry (the session's recording)</label>
+    <p><button id="bundleMake" ${b.state === 'making' ? 'disabled aria-busy="true"' : ''}>Make a debug bundle</button></p>${result}</div>`;
 }
 
 export function render(d, error) {
@@ -83,5 +105,6 @@ export function render(d, error) {
     ${panel('Pit wall budget', team(d.team))}
     ${panel('Latency', latency(d.latency), 'wide')}
     ${panel('This session', counts(d.counts, d.errors))}
-    ${panel('Telemetry feed', feed(d.feed))}</div>`;
+    ${panel('Telemetry feed', feed(d.feed, d.version))}
+    ${panel('Debug bundle', bundlePanel(), 'wide')}</div>`;
 }

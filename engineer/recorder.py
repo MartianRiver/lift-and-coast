@@ -7,9 +7,10 @@ no session (menus) are dropped. If the game goes quiet (saved and quit, console 
 closed and archived after IDLE_CLOSE seconds; the same session resuming opens a second part.
 """
 import struct
+import threading
 import time
 
-from . import archive, log
+from . import archive, log, radiolog
 from .capture import Writer
 from .decode import decode
 
@@ -28,6 +29,8 @@ class SessionRecorder:
         self.started = None
         self.named = False
         self.last_write = 0.0
+        self.stopped = False
+        self._lock = threading.RLock()  # the server's stop closes the file while the UDP thread may be writing
         archive.sweep(self.folder)  # anything a crashed or killed server left raw
 
     @property
@@ -37,15 +40,18 @@ class SessionRecorder:
     def write(self, buf):
         if len(buf) < 29:
             return
-        uid = _UID.unpack_from(buf, 7)[0]
-        if uid and (uid != self.uid or not self.writer):
-            self._open(uid)
-        if not self.writer:
-            return
-        self.writer.write(buf)
-        self.last_write = time.time()
-        if not self.named and buf[6] == 1:
-            self._name(buf)
+        with self._lock:
+            if self.stopped:
+                return
+            uid = _UID.unpack_from(buf, 7)[0]
+            if uid and (uid != self.uid or not self.writer):
+                self._open(uid)
+            if not self.writer:
+                return
+            self.writer.write(buf)
+            self.last_write = time.time()
+            if not self.named and buf[6] == 1:
+                self._name(buf)
 
     def idle(self):
         if self.writer and time.time() - self.last_write > IDLE_CLOSE:
@@ -56,6 +62,8 @@ class SessionRecorder:
         self.close()
         self.uid, self.started, self.named = uid, time.time(), False
         self.writer = Writer(archive.unique(self.folder / f"{archive.label(self.started, None)}.f1cap"))
+        radiolog.record("recording", {"uid": str(uid), "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.started)),
+                                      "wall0": self.writer.wall0})
 
     def _name(self, buf):
         try:
@@ -64,20 +72,21 @@ class SessionRecorder:
             self.named = True
             return _log.warn("couldn't name the session file", error=str(e))
         new = archive.unique(self.folder / f"{archive.label(self.started, session)}.f1cap")
-        self.writer.path.rename(new)  # the open handle follows the file
-        self.writer.path = new
+        self.writer.move(new)
         self.named = True
         _log.info("session file", path=str(new), uid=str(self.uid))
 
     def close(self, wait=False):
         """wait: archive now (server shutdown, where the background worker would die with the process)."""
-        if not self.writer:
-            return
-        self.writer.close()
-        started = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.started))
+        with self._lock:
+            self.stopped = self.stopped or wait  # shutting down: nothing after this is recorded
+            if not self.writer:
+                return
+            writer, self.writer = self.writer, None
+            writer.close()
+            started = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.started))
         if wait:
-            _log.info("archiving the session file before exit", path=str(self.writer.path))
-            archive.finish(self.writer.path, started)
+            _log.info("archiving the session file before exit", path=str(writer.path))
+            archive.finish(writer.path, started)
         else:
-            archive.finish_later(self.writer.path, started)
-        self.writer = None
+            archive.finish_later(writer.path, started)

@@ -1,7 +1,11 @@
 """Streaming chat completions (stdlib only). OpenRouter by default; RE_LLM_URL points it at any
-OpenAI-compatible endpoint (a local server, OpenAI itself) with RE_LLM_KEY as its key, if it needs one."""
+OpenAI-compatible endpoint (a local server, OpenAI itself) with RE_LLM_KEY as its key, if it needs one.
+
+The live server and `dev prep --run` set TRACE, and every call's messages and reply then go in TRACE/<date>.jsonl, so a bad
+answer can be read back exactly as the model saw it."""
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -13,6 +17,8 @@ _log = log.get("llm")
 
 OPENROUTER = "https://openrouter.ai/api/v1"
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+TRACE = None  # a folder, or None: dev tools and evals aren't kept
+_trace_lock = threading.Lock()
 
 
 class LLMError(Exception):
@@ -47,19 +53,42 @@ def api_key():
     return key or (None if openrouter() else "")
 
 
-def stream(model, messages, on_text, effort="low", max_tokens=4000, timeout=60, role="other", at=usage.NOWHERE, why=None):
+def stream(model, messages, on_text, effort="low", max_tokens=4000, timeout=60, role="other", at=usage.NOWHERE, why=None,
+           first_by=None):
     """Stream a reply, calling on_text(chunk) as content arrives. -> stats dict. Raises LLMError.
-    Every call is recorded with its cost: `role` (engineer, strategist, judge…), `at` = usage.where(state)."""
+    Every call is recorded with its cost: `role` (engineer, strategist, judge…), `at` = usage.where(state).
+    first_by: seconds to the first word, and the longest the reply may then go quiet, before giving up."""
+    started, got = time.time(), []
+
+    def collect(text):
+        got.append(text)
+        on_text(text)
     try:
-        stats = _stream(model, messages, on_text, effort, max_tokens, timeout)
+        stats = _stream(model, messages, collect, effort, max_tokens, timeout, first_by)
     except LLMError as e:
         usage.llm(role, model, at=at, why=why, error=str(e))
+        _keep(started, role, why, at, model, messages, "".join(got), error=str(e))
         raise
     usage.llm(role, model, stats, at, why)
+    _keep(started, role, why, at, model, messages, "".join(got), stats=stats)
     return stats
 
 
-def _stream(model, messages, on_text, effort, max_tokens, timeout):
+def _keep(started, role, why, at, model, messages, reply, **result):
+    if TRACE is None:
+        return
+    row = {"at": round(started, 3), "role": role, "why": why, "session": at[0], "model": model,
+           "messages": messages, "reply": reply, **result}
+    try:
+        with _trace_lock:
+            TRACE.mkdir(parents=True, exist_ok=True)
+            with (TRACE / time.strftime("%Y%m%d.jsonl", time.localtime(started))).open("a") as f:
+                f.write(json.dumps(row) + "\n")
+    except OSError as e:
+        _log.error("couldn't keep model call", error=str(e))
+
+
+def _stream(model, messages, on_text, effort, max_tokens, timeout, first_by=None):
     key = api_key()
     if key is None:
         raise LLMError("no OPENROUTER_API_KEY (or RE_LLM_KEY) in the environment or .env")
@@ -77,8 +106,11 @@ def _stream(model, messages, on_text, effort, max_tokens, timeout):
     first, spent, provider, chars = None, {}, None, 0
     _log.debug("llm request", model=model, messages=len(messages), prompt_chars=sum(len(m["content"]) for m in messages))
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with urllib.request.urlopen(req, timeout=first_by or timeout) as r:
             for raw in r:
+                # OpenRouter keeps a waiting stream alive with comment lines, so the socket alone never times out
+                if first_by and first is None and time.perf_counter() - t0 > first_by:
+                    raise LLMError(f"no answer in {first_by:g} s")
                 line = raw.decode().strip()
                 if not line.startswith("data: ") or line == "data: [DONE]":
                     continue
@@ -95,7 +127,9 @@ def _stream(model, messages, on_text, effort, max_tokens, timeout):
                         on_text(text)
     except urllib.error.HTTPError as e:
         raise LLMError(f"HTTP {e.code}: {_error_message(e.read())}") from e
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
+    except TimeoutError as e:
+        raise LLMError(f"no answer in {first_by or timeout:g} s") from e
+    except (urllib.error.URLError, OSError) as e:
         raise LLMError(f"network: {e}") from e
     stats = {
         "model": model, "provider": provider,

@@ -2,11 +2,13 @@
 import unittest
 from unittest.mock import patch
 
-from engineer import calls
-from engineer.calls import Caller, common, gaps
+from engineer import brief, calls
+from engineer.calls import Caller, common, events, gaps
+from engineer.pitwall import triggers
 from engineer.calls.scan import SETTLE, scan
 from engineer.race import Race
 from engineer.spec import PACKETS
+from tests import radio_rows
 from tests.test_brief import Hub, raced
 
 
@@ -129,6 +131,24 @@ class Delivery(unittest.TestCase):
         self.assertEqual(self.step(dt=1.5), [])
         self.assertEqual(len(self.caller.queue), 1)
 
+    def test_live_calls_go_in_the_radio_log_and_replayed_ones_dont(self):
+        rows = radio_rows(self)
+        self.push(text="replayed")
+        self.step(dt=0.2)
+        self.step(dt=1.2)
+        self.caller.at = lambda: (1, 15, 17)
+        self.push(text="live")
+        self.step(dt=7.0)
+        self.assertEqual(rows("call"), [{"kind": "call", **self.caller.sent[0]}])
+        self.assertEqual(self.caller.sent[0]["text"], "live")
+
+    def test_a_team_call_from_the_last_session_isnt_said_in_this_one(self):
+        # the team answered after the game went quiet, and the next race started hours later
+        self.caller.push([{"key": ("team", "box"), "topic": "team", "prio": calls.URGENT, "ttl": 60,
+                           "text": lambda b: "Box, box, new front wing."}])
+        self.caller._uid = "the session before"
+        self.assertEqual(self.step(dt=0.2) + self.step(dt=1.2), [])
+
     def test_calls_are_spaced(self):
         self.push(text="one")
         self.push(text="two")
@@ -136,6 +156,68 @@ class Delivery(unittest.TestCase):
         self.assertEqual([c["text"] for c in self.step(dt=1.2)], ["one"])
         self.assertEqual(self.step(dt=1.0), [])
         self.assertEqual([c["text"] for c in self.step(dt=5.5)], ["two"])
+
+
+class RedFlag(unittest.TestCase):
+    # as the game sent it at Monza: SC out, a red flag 15 s later, the SC phases run out, then a standing restart
+    def setUp(self):
+        self.r, self.mem = raced(3), {}
+        self.t = Race(self.r.st).now
+
+    def send(self, code, details=b""):
+        self.t += 1
+        self.r.event(self.t, code, details)
+        b = Race(self.r.st)
+        return b, events.safety_car(b, self.mem)
+
+    def test_called_as_a_red_flag_not_a_safety_car_restart(self):
+        b, (sc,) = self.send("SCAR", bytes([1, 0]))
+        self.assertEqual(sc["text"](b), "Safety car, safety car.")
+        b, (red,) = self.send("RDFL")
+        self.assertEqual(red["text"](b), "Red flag, red flag.")
+        self.assertIsNone(sc["text"](b))  # one still waiting for a straight is dropped
+        for details in (bytes([1, 1]), bytes([1, 2]), bytes([0, 3])):
+            self.assertEqual(self.send("SCAR", details)[1], [])
+        self.assertIsNotNone(b.red_flag())
+        b, _ = self.send("LGOT")
+        self.assertIsNone(b.red_flag())
+
+    def test_the_brief_and_the_team_hear_of_it(self):
+        self.send("SCAR", bytes([1, 0]))
+        self.send("RDFL")
+        self.assertIn("SITUATION RED FLAG: race suspended · everyone gets a free tyre change", brief.build(self.r.st))
+        self.assertIn("red flag: free tyre change before the standing restart, which set for the laps left?",
+                      [r["text"] for r in triggers.scan(Race(self.r.st), {"t0": 0.0})])
+        self.send("LGOT")
+        self.assertNotIn("RED FLAG", brief.build(self.r.st))
+
+
+class Damage(unittest.TestCase):
+    def test_two_hits_said_once_when_they_read_the_same(self):
+        # Brazil: front wing, then the rear wing a moment later; both calls were rebuilt as "front wing right 80%, rear wing 66%"
+        b, mem = Race(raced(3).st), {}
+        dmg = b.damage()
+        dmg["frontRightWingDamage"] = 80
+        (first,) = [c for c in events.conditions(b, mem) if c["topic"] == "damage"]
+        dmg["rearWingDamage"] = 66
+        (second,) = [c for c in events.conditions(b, mem) if c["topic"] == "damage"]
+        self.assertEqual(first["text"](b), "Damage: front wing right 80%, rear wing 66%.")
+        self.assertIsNone(second["text"](b))
+        dmg["frontRightWingDamage"] = 100
+        (third,) = [c for c in events.conditions(b, mem) if c["topic"] == "damage"]
+        self.assertEqual(third["text"](b), "Damage: front wing right 100%, rear wing 66%.")
+
+    def test_after_a_flashback_the_same_damage_is_said_again(self):
+        b, mem = Race(raced(3).st), {}
+        dmg = b.damage()
+        dmg["frontRightWingDamage"] = 80
+        (c,) = [c for c in events.conditions(b, mem) if c["topic"] == "damage"]
+        self.assertIsNotNone(c["text"](b))
+        dmg["frontRightWingDamage"] = 0
+        events.conditions(b, mem)
+        dmg["frontRightWingDamage"] = 80
+        (again,) = [c for c in events.conditions(b, mem) if c["topic"] == "damage"]
+        self.assertEqual(again["text"](b), "Damage: front wing right 80%.")
 
 
 class Level(unittest.TestCase):

@@ -3,10 +3,10 @@ import importlib.util
 import time
 from dataclasses import dataclass
 
-from . import driver, log, usage, view
+from . import driver, log, quick, radiolog, usage, view
 from .calls import NORMAL, URGENT, Caller
 from .calls.common import call
-from .engineer import DEFAULT_MODEL, Engineer
+from .engineer import DEFAULT_MODEL, FALLBACK, Engineer
 from .pitwall import MODELS, PitWall
 from .radio import Radio
 
@@ -28,14 +28,15 @@ class Crew:
 
 
 def assemble(hub, state, model=DEFAULT_MODEL, engineer=True, mic=True, radio_mode="hold",
-             voice=None, fx=False, device=None, calls=True, live=True, team=MODELS, budget=None, buttons=None):
+             voice=None, fx=False, device=None, calls=True, live=True, team=MODELS, budget=None, buttons=None,
+             fallback=FALLBACK):
     """voice: engine[:voice] spec, or None for text only. mic=False still takes typed questions.
     team: the pit wall's models (lead, second opinion), or None for no team. live=False (a replay):
     spend is logged as dev, not against the session being replayed."""
     def at():
         return usage.where(state) if live else usage.NOWHERE
 
-    eng = Engineer(hub, state, model, role="engineer" if live else "dev", at=at) if engineer else None
+    eng = Engineer(hub, state, model, role="engineer" if live else "dev", at=at, fallback=fallback) if engineer else None
     radio = Radio(hub, mode=radio_mode, driver=lambda: view.player_identity(state), names=lambda: view.session_names(state), at=at,
                   **(buttons or {}))
     if eng:
@@ -46,7 +47,7 @@ def assemble(hub, state, model=DEFAULT_MODEL, engineer=True, mic=True, radio_mod
     elif voice:
         from .tts import Speaker
 
-        speaker = Speaker(hub, voice, fx=fx, device=device, at=at)
+        speaker = Speaker(hub, voice, fx=fx, device=device, at=at, record=live)
         speaker.start()
         radio.on_open.append(speaker.stop)  # keying the radio cuts the engineer off
         if eng:
@@ -74,7 +75,24 @@ def assemble(hub, state, model=DEFAULT_MODEL, engineer=True, mic=True, radio_mod
             eng.commands.append(caller.command)
     if wall:
         _staff(wall, eng, caller, radio)
+    radio.on_quick.append(lambda: _quick(state, hub, eng, speaker, live))
     return Crew(eng, radio, speaker, caller, wall)
+
+
+def _quick(state, hub, eng, speaker, live):
+    """The second button: the quick brief, said now whatever the session."""
+    out = quick.brief(state)
+    if not out:
+        return
+    out.update(id=f"q{time.time_ns()}", at=time.time())
+    hub.publish("call", out)
+    if live:
+        radiolog.record("call", out)
+    _log.info("quick brief", text=out["text"])
+    if eng:
+        eng.said(out["text"])
+    if speaker:
+        speaker.say(out["text"])
 
 
 def _staff(wall, eng, caller, radio):

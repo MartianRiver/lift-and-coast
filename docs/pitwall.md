@@ -52,7 +52,7 @@ archive, so a later race at the same track starts with numbers instead of the ga
 
 Models are only called when something has changed, so it stays cheap but responsive:
 
-- **Events** (code-side triggers): race start (confirm the plan), SC/VSC deployed, rain lap moves
+- **Events** (code-side triggers): race start (confirm the plan), SC/VSC deployed, a red flag (which set for the free change before the restart), rain lap moves
   3+ laps or crosses 50%, slicks crossover, a car within 3 places stops (undercut), pit window
   opens, a tyre ≤ 5 laps from worn, new damage, plan deviation (past the planned box lap, a set
   lasting much longer or shorter than planned), and me asking a strategy question (the engineer

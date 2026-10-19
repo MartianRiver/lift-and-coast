@@ -1,4 +1,5 @@
 """Per-session recording and the archive catalogue, on synthetic packets in a temp folder."""
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ from engineer import archive
 from engineer.capture import read
 from engineer.recorder import SessionRecorder
 from engineer.spec import PACKETS
+from tests import radio_rows
 
 
 def packet(pid, uid, t=1.0, **fields):
@@ -60,6 +62,18 @@ class Recording(unittest.TestCase):
         laps = db.execute("select lap, lap_ms, s3_ms from laps order by lap").fetchall()
         self.assertEqual([tuple(r) for r in laps], [(1, 66000, 21000), (2, 65500, 20500)])
 
+    def test_packets_that_arrive_while_the_server_stops_are_dropped(self):
+        rec = SessionRecorder(self.tmp / "sessions")
+        rec.write(session(444))
+        finish = archive.finish
+
+        def busy(path, started):  # the game keeps sending while the last file is archived
+            rec.write(session(444))
+            finish(path, started)
+        with mock.patch.object(archive, "finish", busy):
+            rec.close(wait=True)
+        self.assertEqual(list((self.tmp / "sessions").glob("*.f1cap")), [])
+
     def test_finished_file_is_compressed_and_still_readable(self):
         rec = SessionRecorder(self.tmp / "sessions")
         rec.write(session(333))
@@ -70,7 +84,21 @@ class Recording(unittest.TestCase):
         self.assertFalse(raw.exists())
         self.assertEqual(len(list(read(xz))), 2)
         path = archive.connect().execute("select path from files").fetchone()["path"]
-        self.assertEqual(path, str(xz))
+        self.assertEqual(path, str(xz.absolute()))  # absolute: 0.1 can open the catalogue too
+
+    def test_reindexing_an_old_catalogue_doesnt_list_a_file_twice(self):
+        rec = SessionRecorder(self.tmp / "sessions")
+        rec.write(session(777))
+        rec.write(history(777, [70000]))
+        rec.close(wait=True)
+        db = archive.connect()
+        with db:
+            db.execute("update files set path = ? || path, started_at = '2026-10-13 18:18:18'",  # as the old rows
+                       (tempfile.mkdtemp() + "/",))
+        db.close()
+        db = archive.connect()
+        archive.reindex(db)
+        self.assertEqual([tuple(r) for r in db.execute("select started_at from files")], [("2026-10-13 18:18:18",)])
 
     def test_leftover_raw_file_is_finished_on_start(self):
         rec = SessionRecorder(self.tmp / "sessions")
@@ -93,6 +121,150 @@ class Recording(unittest.TestCase):
         self.assertIsNotNone(rec.writer)
         rec.close(wait=True)
         self.assertEqual(len(list(self.tmp.joinpath("sessions").glob("*.f1cap.xz"))), 2)
+
+    def test_each_file_puts_its_start_on_the_radio_log(self):
+        rows = radio_rows(self)
+        rec = SessionRecorder(self.tmp / "sessions")
+        rec.write(session(666))
+        first = rec.writer.wall0
+        rec.last_write -= 300
+        rec.idle()
+        rec.write(history(666, [70000]))  # a second part has its own t=0
+        second = rec.writer.wall0
+        rec.close(wait=True)
+        self.assertEqual([(r["uid"], r["wall0"]) for r in rows("recording")], [("666", first), ("666", second)])
+        self.assertLess(first, second)
+
+
+
+class Schema(unittest.TestCase):
+    """The catalogue's user_version: upgraded a step at a time, and a newer one left alone."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        for p in [mock.patch.object(archive, "DATA", self.tmp), mock.patch.object(archive, "DB", self.tmp / "a.db"),
+                  mock.patch.object(archive, "SESSIONS", self.tmp / "sessions")]:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def version(self):
+        db = sqlite3.connect(archive.DB)  # its own connection: only what was committed
+        try:
+            return db.execute("pragma user_version").fetchone()[0]
+        finally:
+            db.close()
+
+    def test_a_catalogue_from_0_1_is_upgraded_and_keeps_its_rows(self):
+        db = sqlite3.connect(archive.DB)
+        db.executescript(archive.SCHEMA)  # what 0.1 made, with no version on it
+        db.execute("insert into sessions (uid, track) values ('1', 'Austria')")
+        db.commit()
+        db.close()
+        db = archive.connect()
+        self.assertEqual(self.version(), len(archive.STEPS))
+        self.assertEqual([tuple(r) for r in db.execute("select uid, track from sessions")], [("1", "Austria")])
+
+    def test_each_step_runs_once(self):
+        steps = archive.STEPS + ["create table one (a int)", "create table two (a int)"]  # these fail if run twice
+        with mock.patch.object(archive, "STEPS", steps):
+            archive.connect().close()
+        self.assertEqual(self.version(), len(steps))
+        with mock.patch.object(archive, "STEPS", steps + ["alter table one add column b int"]):
+            archive.connect().close()
+            archive.connect().close()
+        self.assertEqual(self.version(), len(steps) + 1)
+        db = sqlite3.connect(archive.DB)
+        self.assertEqual([r[1] for r in db.execute("pragma table_info(one)")], ["a", "b"])
+        db.close()
+
+    def test_a_failed_step_leaves_the_catalogue_as_it_was(self):
+        archive.connect().close()
+        with mock.patch.object(archive, "STEPS", archive.STEPS + ["create table extra (a int); alter table nope add column b"]):
+            with self.assertRaises(sqlite3.Error):
+                archive.connect()
+        db = archive.connect()
+        self.assertEqual(self.version(), len(archive.STEPS))
+        self.assertNotIn("extra", [r[0] for r in db.execute("select name from sqlite_master")])
+
+    def test_an_up_to_date_catalogue_opens_while_something_else_writes(self):
+        archive.connect().close()
+        writer = sqlite3.connect(archive.DB)
+        writer.execute("begin immediate")  # the server's usage writer, mid-write
+        self.addCleanup(writer.close)
+        real = sqlite3.connect
+        with mock.patch.object(archive.sqlite3, "connect", lambda path, timeout: real(path, timeout=0.2)):
+            archive.connect().close()  # doesn't wait for the write lock
+
+    def test_a_newer_catalogue_opens_as_it_is(self):
+        db = archive.connect()
+        db.execute(f"pragma user_version = {len(archive.STEPS) + 3}")
+        db.execute("create table later (a int)")  # something a newer version added
+        db.commit()
+        db.close()
+        db = archive.connect()
+        self.assertEqual(self.version(), len(archive.STEPS) + 3)
+        self.assertEqual(db.execute("select count(*) from sessions").fetchone()[0], 0)
+
+
+class OldCatalogue(unittest.TestCase):
+    """A catalogue copied over from another folder, or with the relative paths a pre-release 0.2 wrote."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        for p in [mock.patch.object(archive, "DATA", self.tmp / "data"), mock.patch.object(archive, "DB", self.tmp / "data" / "a.db"),
+                  mock.patch.object(archive, "SESSIONS", self.tmp / "data" / "sessions")]:
+            p.start()
+            self.addCleanup(p.stop)
+        archive.SESSIONS.mkdir(parents=True)
+        (archive.SESSIONS / "2026-10-13_181818_Austria_Race.f1cap.xz").write_bytes(b"")
+        db = archive.connect()
+        with db:
+            for name in ("2026-10-13_181818_Austria_Race.f1cap.xz", "2026-10-12_090000_Spa_Race.f1cap.xz"):
+                old = str(self.tmp / "elsewhere" / "sessions" / name)
+                db.execute("insert into files (path, session_uid) values (?, '1')", (old,))
+                db.execute("insert into events (session_uid, file, code) values ('1', ?, 'SSTA')", (old,))
+        db.close()
+
+    def rows(self):
+        db = archive.connect()
+        return sorted(r[0] for r in db.execute("select path from files")), sorted(r[0] for r in db.execute("select file from events"))
+
+    def test_files_that_are_here_are_found_here(self):
+        files, events = self.rows()
+        self.assertEqual(files, sorted([str(self.tmp / "elsewhere" / "sessions" / "2026-10-12_090000_Spa_Race.f1cap.xz"),  # not here
+                                        str(archive.SESSIONS / "2026-10-13_181818_Austria_Race.f1cap.xz")]))
+        self.assertEqual(events, files)
+
+    def test_the_copy_here_wins_while_the_old_folder_still_exists(self):
+        old = self.tmp / "elsewhere" / "sessions" / "2026-10-14_172555_Zandvoort_Race.f1cap.xz"
+        old.parent.mkdir(parents=True)
+        old.write_bytes(b"")
+        (archive.SESSIONS / old.name).write_bytes(b"")
+        db = archive.connect()
+        with db:
+            db.execute("insert into files (path, session_uid) values (?, '3')", (str(old),))
+        db.close()
+        self.assertIn(str(archive.SESSIONS / old.name), self.rows()[0])
+
+    def test_rows_an_older_version_adds_later_are_moved_too(self):
+        self.rows()
+        db = archive.connect()
+        with db:
+            db.execute("insert into files (path, session_uid) values (?, '2')", (str(archive.SESSIONS / "2026-10-17_114731_Austria_Race.f1cap.xz"),))
+        db.close()
+        self.assertIn(str(archive.SESSIONS / "2026-10-17_114731_Austria_Race.f1cap.xz"), self.rows()[0])
+
+    def test_relative_rows_become_absolute_so_0_1_can_open_them(self):
+        db = archive.connect()
+        with db:
+            db.execute("insert into files (path, session_uid) values ('sessions/2026-10-13_181818_Austria_Race.f1cap.xz', '4')")
+            db.execute("insert into files (path, session_uid) values ('sessions/2026-10-18_160530_Brazil_Race-2.f1cap.xz', '5')")
+            db.execute("insert into events (session_uid, file, code) values ('5', 'sessions/2026-10-18_160530_Brazil_Race-2.f1cap.xz', 'SSTA')")
+        db.close()
+        files, events = self.rows()
+        self.assertTrue(all(Path(f).is_absolute() for f in files + events))
+        self.assertIn(str(archive.DATA / "sessions" / "2026-10-18_160530_Brazil_Race-2.f1cap.xz"), events)  # not here, still absolute
+        self.assertEqual(files.count(str(archive.SESSIONS / "2026-10-13_181818_Austria_Race.f1cap.xz")), 1)  # two rows, one file
 
 
 if __name__ == "__main__":

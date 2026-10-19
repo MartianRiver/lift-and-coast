@@ -178,6 +178,58 @@ class Prep(unittest.TestCase):
         self.assertIsNone(prep.check({"start": "Medium new", "call": "Medium start, box L15-18 for the new Soft"}, info))
         self.assertIn("which set", prep.check({"start": "Soft", "call": "Soft start, one stop"}, info))
 
+    def test_quali_sets_as_the_race_will_have_them(self):
+        from engineer.pitwall import prep
+        # Monza quali said Soft 18, Medium 25; the race then gave Soft 9, Medium 12, Hard 17
+        quali = [{"compound": 16, "wear": 0, "life": 18, "delta": 0, "fitted": True},
+                 {"compound": 17, "wear": 0, "life": 25, "delta": 460, "fitted": False},
+                 {"compound": 7, "wear": 0, "life": 52, "delta": 4240, "fitted": False}]
+        race = prep.race_sets(quali, 9)
+        self.assertEqual([(s["compound"], s["life"]) for s in race], [(16, 9), (17, 12), (7, 26), (18, 16)])
+        self.assertEqual(race[-1]["delta"], 960)
+        self.assertIs(prep.race_sets(race, 16), race)  # a race's own sets are already the race's
+        with mock.patch.object(prep.profile, "tyre_life", lambda db: []):
+            text = "\n".join(prep._tyres(None, {"sets": quali, "type_id": 9}, {"laps": 19, "grid": 4}))
+        self.assertIn("Soft new: +0.00 s/lap, life 9", text)
+        self.assertIn("Hard new: +0.96 s/lap, life 16", text)
+
+    def test_practice_lives_are_already_the_races_and_a_sprint_gets_no_hard(self):
+        from engineer.pitwall import prep
+        # Brazil: practice said Soft 17 / Hard 26; the shootout Soft 33 / Medium 41, the sprint then Soft 17 / Medium 21
+        practice = [{"compound": 16, "wear": 0, "life": 17, "delta": 0, "fitted": True},
+                    {"compound": 18, "wear": 0, "life": 26, "delta": 900, "fitted": False}]
+        self.assertIs(prep.race_sets(practice, 1), practice)
+        shootout = [{"compound": 16, "wear": 0, "life": 33, "delta": 0, "fitted": True},
+                    {"compound": 17, "wear": 0, "life": 41, "delta": 500, "fitted": False}]
+        self.assertEqual([(s["compound"], s["life"]) for s in prep.race_sets(shootout, 12, sprint=True)], [(16, 16), (17, 20)])
+        self.assertEqual(prep.race_sets(shootout, 12)[-1]["compound"], 18)
+
+    def test_which_race_is_next_on_a_sprint_weekend(self):
+        from engineer.pitwall import prep
+        last = {"track": "Brazil", "track_id": 29, "track_length": 4309, "weekend": [1, 12, 15, 9, 16], "type_id": 12,
+                "type": "Sprint Shootout 3", "position": 1, "forecast": [], "best_lap_ms": 70000}
+        with mock.patch.object(prep.profile, "distance", lambda db: 0.35):
+            lines, info = prep._event(None, last)
+            self.assertEqual((info["session"], info["sprint"], info["laps"], info["grid"]), (15, True, 8, 1))
+            self.assertIn("next: Race (the sprint) · ≈8 laps", lines[1])
+            lines, info = prep._event(None, {**last, "type_id": 9, "type": "One-Shot Qualifying", "position": 3})
+        self.assertEqual((info["session"], info["sprint"], info["laps"], info["grid"]), (16, False, 25, 3))
+        self.assertIn("next: Race 2 · ≈25 laps", lines[1])
+
+    def test_a_sprint_is_planned_without_a_stop(self):
+        from engineer.pitwall import prep
+        sets = [{"name": "Soft new", "wet": False, "mine": 17.0, "delta": 0.0},
+                {"name": "Medium new", "wet": False, "mine": 6.0, "delta": 0.5},
+                {"name": "Inter new", "wet": True, "mine": 31.0, "delta": 4.0}]
+        info = {"laps": 8, "sprint": True}
+        text = "\n".join(prep._options(sets, info))
+        self.assertIn("NO-STOP OPTIONS", text)
+        self.assertIn("Soft new: lasts 17, enough for 8, +0.00 s/lap", text)
+        self.assertIn("Medium new: lasts 6, short of 8", text)
+        self.assertNotIn("Inter", text)
+        self.assertIsNone(prep.check({"start": "Soft new", "call": "Soft to the flag, no stop"}, info))
+        self.assertEqual(prep._field(None, info), [])
+
     def test_fuel_from_conditions_not_whole_races(self):
         from engineer.pitwall import prep
         races = [{"lap1": -0.06, "dry": 0.0, "dryLow": -0.02, "wet": None, "sc": 0.27},   # dry, with a safety car

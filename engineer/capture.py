@@ -31,6 +31,7 @@ class Writer:
         self._f = open(self.path, "wb")
         self._f.write(MAGIC)
         self._t0 = time.monotonic()
+        self.wall0 = time.time()  # where t=0 is on the wall clock: lines the radio up with the packets
         self.count = 0
         _log.info("recording", path=str(self.path))
 
@@ -40,6 +41,12 @@ class Writer:
         self.count += 1
         if self.count % 2000 == 0:
             self._f.flush()
+
+    def move(self, path):
+        # Windows won't rename a file that's open
+        self._f.close()
+        self.path = self.path.rename(path)
+        self._f = open(self.path, "ab")
 
     def close(self):
         self._f.close()
@@ -61,6 +68,18 @@ def read(path):
             if len(buf) < n:
                 break  # truncated tail from an unclean shutdown
             yield t, buf
+
+
+def write(path, records):
+    """(seconds, datagram) pairs to a new .f1cap, or a .f1cap.xz compressed as the archive does. -> how many."""
+    n = 0
+    with (lzma.open(path, "wb", preset=1) if str(path).endswith(".xz") else open(path, "wb")) as f:
+        f.write(MAGIC)
+        for t, buf in records:
+            f.write(_REC.pack(t, len(buf)))
+            f.write(buf)
+            n += 1
+    return n
 
 
 def _is_buttons(buf):

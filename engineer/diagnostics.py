@@ -3,6 +3,7 @@ evals and dev on the side) and how long each step takes, from the usage tables."
 import time
 
 from . import archive, formats, usage
+from .version import VERSION
 
 LATENCY = (("stt_ms", "speech to text", "ms"), ("release_ms", "release → text on screen", "ms"),
            ("tts_ms", "voice: text → first audio", "ms"), ("call_delay_s", "call queued → said", "s"))
@@ -22,7 +23,7 @@ def report(st, wall=None):
                 "allTime": _spend(db, "1 = 1", ()),
                 "byType": _by_type(db), "recent": _recent(db), "offSession": _off_session(db),
                 "latency": _latency(db, uid), "counts": _counts(db, uid), "errors": _errors(db, uid),
-                "feed": _feed(st)}
+                "feed": _feed(st), "version": VERSION}
     finally:
         db.close()
 
@@ -101,8 +102,9 @@ def _counts(db, uid):
 
 
 def _errors(db, uid):
-    rows = db.execute("select at, role, model, error from usage where error is not null and at >= ? order by at desc limit 5",
-                      (time.time() - WEEK,)).fetchall()
+    # what went wrong while driving: the dev tools and evals have their own failures on purpose
+    rows = db.execute("select at, role, model, error from usage where error is not null and at >= ? "
+                      "and role not in ('dev', 'eval', 'judge') order by at desc limit 5", (time.time() - WEEK,)).fetchall()
     n = db.execute("select count(*) from usage where error is not null and session_uid = ?", (uid,)).fetchone()[0]
     return {"session": n, "recent": [dict(r) for r in rows]}
 

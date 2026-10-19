@@ -10,12 +10,14 @@ import time
 from collections import deque
 from pathlib import Path
 
-from . import brief, driver, log, radiolog, usage
+from . import brief, driver, log, numbers, radiolog, usage
 from .llm import LLMError, api_key, stream
 
 _log = log.get("engineer")
 
 DEFAULT_MODEL = "moonshotai/kimi-k3"
+FALLBACK = "anthropic/claude-haiku-5.5"  # quick to the first word too, and not served by the same providers
+FIRST_WORD = 5  # s: live first words have been 1.5-3.6 s, then 6.3 and 17.7 s from a slow provider
 # acknowledgements get no reply, like on a real radio (yes/no left out: they may answer a question)
 ACKS = {"copy", "copy that", "ok", "okay", "mm hmm", "mhm", "roger", "understood",
         "got it", "thanks", "thank you", "cheers"}
@@ -27,17 +29,19 @@ HISTORY = 6  # exchanges (and radio calls) kept for follow-ups
 # ...and only this recent: older answers got repeated as if current ("the set's fresh" 10 laps into it)
 HISTORY_SECS = 90
 CHECKING = "Copy, checking."
+UNSURE = "Can't give you a solid number on that one."  # said when every sentence of a reply was held back
+LOST = "Lost the data on that one, ask me again."  # neither model answered
 SENTENCE = re.compile(r"[.!?](?=\s)")  # "0.7" and "P1." at the end of a chunk don't count
 
 SYSTEM = (Path(__file__).resolve().parent / "prompts" / "engineer.md").read_text()  # the live brief follows it
 
 
 class Engineer:
-    def __init__(self, hub, state, model=DEFAULT_MODEL, role="engineer", at=None):
+    def __init__(self, hub, state, model=DEFAULT_MODEL, role="engineer", at=None, fallback=FALLBACK):
         self.hub = hub
         self.role, self.at = role, at or (lambda: usage.where(state))  # what the spend is logged against
         self.state = state
-        self.model = model
+        self.model, self.fallback = model, fallback
         self.replies = deque(maxlen=30)
         self.error = None if api_key() is not None else "no OPENROUTER_API_KEY in .env, engineer is off"
         self._history = deque(maxlen=HISTORY)
@@ -120,6 +124,17 @@ class Engineer:
         _log.info("asking", model=self.model, question=msg["text"], brief_chars=len(data))
 
         spoken = ""  # streamed text not yet handed to the voice
+        said, held = [], []
+        given = data + "\n" + msg["text"]
+
+        def say(sentence):
+            wrong = numbers.unsupported(sentence, given)
+            if wrong:
+                held.append({"text": sentence, "numbers": wrong})
+                _log.warn("number not in the brief, not said", sentence=sentence, numbers=wrong)
+                return
+            said.append(sentence)
+            self.speak(sentence, reply["at"])
 
         def on_text(chunk):
             nonlocal spoken
@@ -127,27 +142,43 @@ class Engineer:
             spoken += chunk
             self._publish(reply, status="streaming")
             while m := SENTENCE.search(spoken):
-                self.speak(spoken[:m.end()].strip(), reply["at"])
+                say(spoken[:m.end()].strip())
                 spoken = spoken[m.end():]
 
-        try:
-            stats = stream(self.model, messages, on_text, role=self.role, at=self.at(), why="question")
-        except LLMError as e:
-            _log.error("engineer call failed", exc=False, model=self.model, error=str(e))
-            return self._publish(reply, status="error", error=str(e))
+        stats = None
+        for model in dict.fromkeys(m for m in (self.model, self.fallback) if m):
+            try:
+                stats = stream(model, messages, on_text, role=self.role, at=self.at(),
+                               why="question" if model == self.model else "fallback", first_by=FIRST_WORD)
+                break
+            except LLMError as e:
+                _log.error("engineer call failed", exc=False, model=model, error=str(e), started=bool(reply["text"]))
+                failed = str(e)
+                if reply["text"]:  # part of the answer is out: another model would start it again
+                    break
+        if stats is None:
+            if said:
+                return self._publish(reply, status="error", error=failed)
+            self.speak(LOST, reply["at"])
+            return self._publish(reply, status="error", error=failed, text=LOST, local=True)
         reply["text"] = reply["text"].strip()
         if spoken.strip():
-            self.speak(spoken.strip(), reply["at"])
-        self._history.append((time.time(), _question(msg), reply["text"]))
-        self._publish(reply, status="done", **stats)
+            say(spoken.strip())
+        if held and not said:
+            said.append(UNSURE)
+            self.speak(UNSURE, reply["at"])
+        # what was actually said, so a follow-up (or the team) doesn't build on a held-back figure
+        heard = " ".join(said) if held else reply["text"]
+        self._history.append((time.time(), _question(msg), heard))
+        self._publish(reply, status="done", held=held or None, **stats)
         if route == "now":  # no time to ask: the team looks at what we said
-            self.wall.answered(msg["text"], reply["text"])
+            self.wall.answered(msg["text"], heard)
 
     def _publish(self, reply, **changes):
         reply.update(changes)
         if reply["status"] in ("done", "error"):
             self.replies.append(dict(reply))
-            radiolog.record("reply", {k: reply.get(k) for k in ("to", "status", "text", "model", "error", "local", "firstMs", "at")})
+            radiolog.record("reply", {k: reply.get(k) for k in ("to", "status", "text", "held", "model", "error", "local", "firstMs", "at")})
         self.hub.publish("reply", dict(reply))
 
 

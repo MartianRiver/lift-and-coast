@@ -1,12 +1,16 @@
+import threading
 import time
 import unittest
+
+from engineer import radiolog
 
 try:
     import numpy as np
 except ImportError:  # the voice extra isn't installed
     raise unittest.SkipTest("numpy")
 
-from engineer.radio import BLOCK, MAX_OPEN_S, POST_ROLL_S, Radio, button
+from engineer.radio import BLOCK, MAX_OPEN_S, POST_ROLL_S, SAMPLE_RATE, Radio, button
+from tests import radio_rows
 
 TRIGGER = 1 << button("UDP Action 1")
 
@@ -64,7 +68,10 @@ class Hold(unittest.TestCase):
 
     def test_quick_publishes_without_opening(self):
         r = make("hold")
+        pressed = threading.Event()
+        r.on_quick.append(lambda: pressed.set() if threading.current_thread() is not threading.main_thread() else None)
         r.on_buttons(0, 1 << button(2))
+        self.assertTrue(pressed.wait(2))  # off the packet thread, which holds the state lock
         self.assertIsNone(r._frames)
         self.assertIn("quick", [k for k, _ in r.hub.events])
 
@@ -97,6 +104,17 @@ class Toggle(unittest.TestCase):
         r.on_buttons(TRIGGER, 0)
         r.on_buttons(0, TRIGGER)  # re-tap inside post-roll: ignored
         self.assertIsNotNone(finish(r))
+
+
+class Logged(unittest.TestCase):
+    def test_message_says_when_its_clip_started(self):
+        rows = radio_rows(self)
+        r = make("hold")
+        r._finish(np.full(SAMPLE_RATE // 5, 0.1, dtype=np.float32), time.time())  # too short to transcribe
+        msg = rows("message")[0]
+        self.assertEqual(msg["note"], "too short")
+        self.assertAlmostEqual(msg["clipStart"], time.time() - 0.2, delta=0.1)
+        self.assertTrue((radiolog.CLIPS / msg["clip"]).exists())
 
 
 class Safety(unittest.TestCase):

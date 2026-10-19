@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from engineer import calc, strategy
+from engineer import calc, race, strategy
 
 INTER, SOFT, MEDIUM, HARD = 7, 16, 17, 18
 
@@ -59,6 +59,59 @@ class Measured(unittest.TestCase):
         car(0, [INTER] * 8, {n: 123_000 for n in range(1, 8)})
         n, slick, wet, nd, nw = calc.slicks_vs_wets(laps, [0, 1, 2])
         self.assertEqual((n, slick, wet, nd, nw), (7, 117.0, 123.0, 2, 1))
+
+
+def stop_at(sets, rate=4.5, lap=13, total=25, run=(), weekend=(15,), kind=15, rr=50.0, pit=0):
+    """Brazil L13: 11 laps on a Medium (usable life 21), RR 50% at `rate` %/lap, no stop yet."""
+    data = [{"visualTyreCompound": MEDIUM, "available": 1, "lapDeltaTime": 0, "lifeSpan": 8, "usableLife": 21, "wear": 42}]
+    data += [{"visualTyreCompound": c, "available": 1, "lapDeltaTime": d, "lifeSpan": life, "usableLife": usable, "wear": w}
+             for c, d, life, usable, w in sets]
+    hist = {"numTyreStints": len(run) + 1, "tyreStintsHistoryData": [{"tyreVisualCompound": c} for c in (*run, MEDIUM)]}
+    st = SimpleNamespace(tyre_sets={0: {"tyreSetData": data, "fittedIdx": 0}}, history={0: hist},
+                         laps=SimpleNamespace(cars={0: []}))
+    s = {"totalLaps": total, "sessionType": kind, "weekendStructure": list(weekend), "numSessionsInWeekend": len(weekend)}
+    b = SimpleNamespace(st=st, s=s, me=0, race=True, my={"currentLapNum": lap, "pitStatus": pit},
+                        status=lambda idx=0: {"visualTyreCompound": MEDIUM},
+                        damage=lambda: {"tyresWear": [20, rr, 20, 20]})
+    b.sprint = lambda: race.Race.sprint(b)
+    with mock.patch.object(calc, "wear_rates", return_value=rate and [1.0, rate, 1.0, 1.0]):
+        return strategy.dry_stop(b)
+
+
+BRAZIL = [(SOFT, -2169, 15, 17, 5), (SOFT, -1701, 14, 17, 11), (MEDIUM, -1794, 21, 21, 0), (HARD, -1224, 26, 26, 0)]
+
+
+class DryStop(unittest.TestCase):
+    def test_the_quickest_set_that_reaches_the_flag(self):
+        p = stop_at(BRAZIL)
+        self.assertEqual([o["compound"] for o in p["options"]], [SOFT, HARD])  # a second Medium wouldn't count
+        soft, hard = p["options"]
+        self.assertEqual(soft["wear"], 5)  # the less worn Soft
+        self.assertAlmostEqual(soft["at_flag"], 5 + 4.5 * 21 / 17 * 12)  # ≈71.7: over WORN
+        self.assertIs(p["pick"], hard)
+        self.assertAlmostEqual(hard["at_flag"], 4.5 * 21 / 26 * 12)
+
+    def test_fewer_laps_left_and_the_soft_makes_it(self):
+        self.assertEqual(stop_at(BRAZIL, lap=15)["pick"]["compound"], SOFT)  # 5 + 5.56 × 10 ≈ 60.6
+
+    def test_nothing_to_say_once_the_rule_is_met_and_the_set_lasts(self):
+        self.assertIsNone(stop_at(BRAZIL, run=(SOFT,), rr=20.0, rate=2.0))
+        self.assertIsNone(stop_at(BRAZIL, run=(INTER,), rr=20.0, rate=2.0))  # inters lift the rule
+        self.assertIsNone(stop_at(BRAZIL, pit=1))  # in the pit lane: too late to choose
+        p = stop_at(BRAZIL, run=(SOFT,))  # rule met, but the RR won't last: any set, a Medium too
+        self.assertIn(MEDIUM, [o["compound"] for o in p["options"]])
+        self.assertFalse(p["owed"])
+
+    def test_a_sprint_owes_no_second_compound(self):
+        weekend = (10, 15, 5, 16)  # the sprint is the weekend's first race
+        self.assertIsNone(stop_at(BRAZIL, weekend=weekend, rr=20.0, rate=2.0))
+        self.assertFalse(stop_at(BRAZIL, weekend=weekend)["owed"])
+        self.assertTrue(stop_at(BRAZIL, weekend=weekend, kind=16)["owed"])  # the main race does
+
+    def test_no_wear_rate_falls_back_on_the_sets_life(self):
+        p = stop_at(BRAZIL, rate=None)
+        self.assertIsNone(p["options"][0]["at_flag"])
+        self.assertEqual(p["pick"]["compound"], SOFT)  # 15 laps ≥ 12 × LIFE_MARGIN
 
 
 class Target(unittest.TestCase):

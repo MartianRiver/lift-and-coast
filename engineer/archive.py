@@ -67,14 +67,62 @@ create table if not exists field_wear (session_uid text, lap int, rates text, pr
 create table if not exists session_data (session_uid text primary key, forecast text, sets text, weekend text);
 create index if not exists notes_session on notes (session_uid);
 """
+# STEPS[n] takes the catalogue from user_version n to n + 1. Steps only ever add tables and columns, so an
+# older version still opens a newer catalogue; anything that renames or drops is a 0.x.0 (docs/releasing.md).
+STEPS = [SCHEMA]
 
 
 def connect():
     DATA.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DB, timeout=30)
     db.row_factory = sqlite3.Row
-    db.executescript(SCHEMA)
+    _upgrade(db)
+    _heal_paths(db)
     return db
+
+
+def _upgrade(db):
+    if db.execute("pragma user_version").fetchone()[0] >= len(STEPS):
+        return
+    db.execute("begin immediate")  # the server and a dev tool can open it at once: one of them upgrades
+    have = db.execute("pragma user_version").fetchone()[0]
+    try:
+        for n in range(have, len(STEPS)):
+            for statement in filter(str.strip, STEPS[n].split(";")):
+                db.execute(statement)
+            db.execute(f"pragma user_version = {n + 1}")
+        db.commit()
+    except sqlite3.Error:
+        db.rollback()
+        raise
+    if have < len(STEPS):
+        _log.info("catalogue upgraded", was=have, now=len(STEPS))
+
+
+def stored(path):
+    """A capture file as the catalogue keeps it: absolute, which every version can open (0.1 reads paths as they are)."""
+    return str(Path(path).absolute())
+
+
+def located(path):
+    path = Path(path)
+    return path if path.is_absolute() else DATA / path
+
+
+def _heal_paths(db):
+    """Point each row at the file where it is now: a catalogue copied from another folder, or with the
+    relative paths a pre-release 0.2 wrote, gets the copy in sessions/ (or under DATA for a relative one)."""
+    moved = []
+    for (old,) in db.execute("select path from files").fetchall():
+        here = SESSIONS / Path(old).name  # names carry the date and time, so this is the same recording
+        new = str(here) if here.exists() else stored(located(old))
+        if new != old:
+            moved.append((new, old))
+    if moved:
+        with db:
+            db.executemany("update or replace files set path = ? where path = ?", moved)
+            db.executemany("update events set file = ? where file = ?", moved)
+        _log.info("catalogue paths pointed here", files=len(moved))
 
 
 # --- reading a capture ------------------------------------------------------------
@@ -117,11 +165,11 @@ def index(path, started_at=None, db=None):
             _results(db, uid, latest, history)
             _laps(db, uid, history)
             profile.save(db, uid, s["player"])
-            db.execute("delete from events where file = ?", (str(path),))
+            db.execute("delete from events where file = ?", (stored(path),))
             db.executemany("insert into events values (?, ?, ?, ?, ?, ?)",
-                           [(uid, str(path), t, st, code, json.dumps(d)) for t, st, code, d in s["events"]])
+                           [(uid, stored(path), t, st, code, json.dumps(d)) for t, st, code, d in s["events"]])
             db.execute("insert or replace into files values (?, ?, ?, ?, ?, ?)",
-                       (str(path), uid, started_at or _started(path), s["last"] - s["first"], s["packets"], s["bytes"]))
+                       (stored(path), uid, started_at or _started(path), s["last"] - s["first"], s["packets"], s["bytes"]))
         _log.info("indexed", path=str(path), uid=uid, packets=s["packets"], laps=sum(h["numLaps"] for h in history.values()))
     if own:
         db.close()
@@ -239,8 +287,8 @@ def finish(path, started_at=None, db=None):
     own = db is None
     db = db or connect()
     with db:
-        db.execute("update files set path = ? where path = ?", (str(out), str(path)))
-        db.execute("update events set file = ? where file = ?", (str(out), str(path)))
+        db.execute("update files set path = ? where path = ?", (stored(out), stored(path)))
+        db.execute("update events set file = ? where file = ?", (stored(out), stored(path)))
     if own:
         db.close()
     _log.info("session archived", path=str(out), mb=round(out.stat().st_size / 1e6, 1), secs=round(time.perf_counter() - t0, 1))
@@ -255,14 +303,14 @@ def _name_from_archive(path, db=None):
     own = db is None
     db = db or connect()
     row = db.execute("select s.track_id, s.type_id from sessions s join files f on f.session_uid = s.uid "
-                     "where f.path = ? and s.track_id is not null", (str(path),)).fetchone()
+                     "where f.path = ? and s.track_id is not null", (stored(path),)).fetchone()
     if row:
         stamp = time.mktime(time.strptime(path.name[:17], "%Y-%m-%d_%H%M%S"))
         new = unique(path.with_name(f"{label(stamp, {'trackId': row['track_id'], 'sessionType': row['type_id']})}.f1cap"))
         path.rename(new)
         with db:
-            db.execute("update files set path = ? where path = ?", (str(new), str(path)))
-            db.execute("update events set file = ? where file = ?", (str(new), str(path)))
+            db.execute("update files set path = ? where path = ?", (stored(new), stored(path)))
+            db.execute("update events set file = ? where file = ?", (stored(new), stored(path)))
         path = new
     if own:
         db.close()
@@ -303,7 +351,7 @@ def sweep(folder=SESSIONS, skip=None):
 def reindex(db):
     for path in sorted(SESSIONS.glob("*.f1cap*")):
         if not path.name.endswith(".part"):
-            row = db.execute("select started_at from files where path = ?", (str(path),)).fetchone()
+            row = db.execute("select started_at from files where path = ?", (stored(path),)).fetchone()
             index(path, row["started_at"] if row else None, db)
 
 

@@ -24,7 +24,7 @@ class Race:
         self.my = self.lap_pkt["lapData"][self.me] if self.me < len(self.lap_pkt["lapData"]) else None
         self.sc_laps = st.laps.sc_laps(self.me)
         self.ref_ms = calc.ref_lap_ms(st.history.get(self.me), self.sc_laps)
-        self.gaps = calc.gaps(st.laps, self.me, self.active()) if self.race and self.my else {}
+        self.gaps = calc.gaps(st.laps, self.me, self.active(), live=self.lap_pkt["lapData"]) if self.race and self.my else {}
 
     @property
     def now(self):
@@ -72,6 +72,20 @@ class Race:
     def laps_left(self):
         """Laps still to start after this one."""
         return self.s["totalLaps"] - self.my["currentLapNum"]
+
+    def sprint(self):
+        """The first race of a weekend with more than one: no compulsory stop."""
+        races = [t for t in self.s["weekendStructure"][:self.s["numSessionsInWeekend"]] if t in RACES]
+        return len(races) > 1 and self.s["sessionType"] == min(races)
+
+    def red_flag(self):
+        """The red flag still in force (its restart's lights haven't gone out yet), else None."""
+        for ev in reversed(self.st.events):
+            if ev["code"] == "LGOT":
+                return None
+            if ev["code"] == "RDFL":
+                return ev
+        return None
 
     def battery(self):
         status = self.status()

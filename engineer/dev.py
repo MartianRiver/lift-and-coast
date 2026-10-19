@@ -10,9 +10,11 @@ and without touching the live server.
     uv run python -m engineer.dev pits                           # what a stop costs at each track, from every archived race
     uv run python -m engineer.dev prep [--run]                   # the race plan before the race loads (fuel, start tyre, stops)
     uv run python -m engineer.dev triggers 8                     # when the pit wall would run over a race, and why (no models)
+    uv run python -m engineer.dev snapshot out/next [--only 35,40]   # briefs + calls over every race; --diff A B compares two
     uv run python -m engineer.dev wall 8 --lap 10 [--why "..."] [--ask "should I box?"]   # one pit wall run there
 
-A session is an archive id (from `sessions`), `last`, `race` (latest race), or a capture file path.
+A session is an archive id (from `sessions`), `last`, `race` (latest race), a capture file path, or a
+debug bundle's zip (any part of it).
 --lap N stops when you start lap N (plus --into seconds); --at S is seconds into the session.
 """
 import argparse
@@ -20,7 +22,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import archive, brief, driver, log
+from . import archive, brief, driver, llm, log
 from .calls import Caller
 from .capture import read
 from .engineer import DEFAULT_MODEL, prompt
@@ -35,6 +37,10 @@ _log = log.get("dev")
 
 def resolve(ref):
     """-> (label, [files in order])"""
+    if ref.endswith(".zip"):
+        from .bundle import open_bundle
+
+        return open_bundle(ref)
     if Path(ref).exists():
         return Path(ref).name, [Path(ref)]
     db = archive.connect()
@@ -45,7 +51,7 @@ def resolve(ref):
     row = db.execute(f"select s.* from sessions s where {where} order by s.started_at desc limit 1", args).fetchone()
     if not row:
         raise SystemExit(f"no session {ref!r} (see: uv run python -m engineer.dev sessions)")
-    files = [Path(r["path"]) for r in db.execute("select path from files where session_uid = ? order by started_at", (row["uid"],))]
+    files = [archive.located(r["path"]) for r in db.execute("select path from files where session_uid = ? order by started_at", (row["uid"],))]
     return f"#{row['id']} {row['started_at']} {row['track']} {row['type']}", files
 
 
@@ -210,6 +216,7 @@ def cmd_prep(args):
     print(text or info)
     if not (text and args.run):
         return
+    llm.TRACE = archive.DATA / "llm"  # the race uses this plan, so it's kept like the live calls
     wall = PitWall(RaceState(Quiet()), Quiet(), args.models.split(","), persist=False)
     wall._prepare()
     p = wall.prep
@@ -256,6 +263,19 @@ def cmd_pits(_args):
         print(f"{track:<14} {' · '.join(parts) or 'no stops measured'}  [{t['races']} race{'s' * (t['races'] != 1)} with green-flag stops]")
 
 
+def cmd_snapshot(args):
+    from . import snapshot
+
+    if args.diff:
+        if len(args.folder) != 2:
+            raise SystemExit("--diff takes two folders")
+        text, changed = snapshot.diff(*args.folder)
+        print(text + f"{changed} race{'s' * (changed != 1)} differ")
+        return
+    n = snapshot.make(args.folder[0], only=args.only and {int(i) for i in args.only.split(",")})
+    print(f"{n} races in {args.folder[0]}")
+
+
 def cmd_serve(args):
     from .crew import assemble
     from .server import Server, make_handler
@@ -294,6 +314,10 @@ def main():
     sub.add_parser("sessions")
     sub.add_parser("radio").add_argument("--last", type=int, default=20)
     sub.add_parser("pits")
+    p = sub.add_parser("snapshot", help="the brief every few laps and every call, over every recorded race")
+    p.add_argument("folder", nargs="+", help="where to write it, or with --diff the two folders to compare")
+    p.add_argument("--only", help="archive ids, comma-separated")
+    p.add_argument("--diff", action="store_true")
     p = sub.add_parser("prep")
     p.add_argument("--run", action="store_true", help="ask the team for the plan (saved: the live race picks it up)")
     p.add_argument("--models", default=",".join(MODELS))
@@ -330,6 +354,8 @@ def main():
         return cmd_pits(args)
     if args.cmd == "prep":
         return cmd_prep(args)
+    if args.cmd == "snapshot":
+        return cmd_snapshot(args)
     {"brief": cmd_brief, "ask": cmd_ask, "serve": cmd_serve, "calls": cmd_calls, "triggers": cmd_triggers,
      "wall": cmd_wall}[args.cmd](args)
 

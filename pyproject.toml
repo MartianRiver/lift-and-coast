@@ -1,6 +1,6 @@
 [project]
 name = "lift-and-coast"
-version = "0.1.0"
+version = "0.2.0"
 description = "Race engineer for F1 24/25 on UDP telemetry: live dashboard, strategy team and a voice on the radio"
 requires-python = ">=3.12"
 license = "MIT"

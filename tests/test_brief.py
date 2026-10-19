@@ -11,7 +11,7 @@ import time
 import unittest
 from unittest import mock
 
-from engineer import brief, calc, pitstops
+from engineer import brief, calc, pitstops, race, strategy
 from engineer.glance import glance
 from engineer.spec import EVENT_DETAILS_SIZE, PACKETS
 from engineer.state import RaceState
@@ -79,8 +79,10 @@ class Race:
         self.send(4, 0, **{k: v for k, v in p.items() if k != "header"})
         sets = PACKETS[12].blank()
         sets["carIdx"], sets["fittedIdx"] = 0, 0
-        sets["tyreSetData"][0].update(visualTyreCompound=17, actualTyreCompound=18, available=1, fitted=1, lifeSpan=9)
-        sets["tyreSetData"][1].update(visualTyreCompound=18, actualTyreCompound=19, available=1, lapDeltaTime=-700)
+        sets["tyreSetData"][0].update(visualTyreCompound=17, actualTyreCompound=18, available=1, fitted=1, lifeSpan=9,
+                                      usableLife=21)
+        sets["tyreSetData"][1].update(visualTyreCompound=18, actualTyreCompound=19, available=1, lapDeltaTime=-700,
+                                      lifeSpan=26, usableLife=26)
         self.send(12, 0, **{k: v for k, v in sets.items() if k != "header"})
 
     def tick(self, t):
@@ -128,6 +130,9 @@ class Race:
                 self.history(t)
             t += step
 
+    def event(self, t, code, details=b""):
+        self.send(3, t, eventStringCode=code, eventDetails=details.ljust(EVENT_DETAILS_SIZE, b"\0"))
+
     def flashback(self, to):
         details = struct.pack("<If", 0, to).ljust(EVENT_DETAILS_SIZE, b"\0")
         self.send(3, to, eventStringCode="FLBK", eventDetails=details)
@@ -159,6 +164,41 @@ class Gaps(unittest.TestCase):
         g = calc.gaps(self.st.laps, 0, [1, 2, 3])
         self.assertAlmostEqual(g[2]["gap"], -2.0 + 0.15 * 7, places=2)
         self.assertAlmostEqual(g[2]["trend"], 0.15, places=2)
+
+    def live(self, *order, pitting=()):
+        """Lap data as the game sends it now: (car, seconds behind the leader) in running order."""
+        cars = PACKETS[2].blank()["lapData"]
+        for pos, (idx, secs) in enumerate(order, 1):
+            cars[idx].update(deltaToRaceLeaderMinutesPart=int(secs // 60), deltaToRaceLeaderMSPart=round(secs % 60 * 1000),
+                             pitStatus=int(idx in pitting), resultStatus=2, carPosition=pos)
+        return cars
+
+    def test_the_gap_now_comes_from_the_live_timing(self):
+        # Tsunoda has just got past: the line gap still says behind, the live timing says 0.4 ahead
+        line = calc.gaps(self.st.laps, 0, [1, 2])
+        g = calc.gaps(self.st.laps, 0, [1, 2], live=self.live((2, 0.0), (1, 0.6), (0, 1.0)))
+        self.assertAlmostEqual(g[1]["gap"], -0.4, places=3)
+        self.assertAlmostEqual(g[2]["gap"], -1.0, places=3)  # the leader's own 0 counts
+        self.assertEqual((g[1]["trend"], g[1]["last"]), (line[1]["trend"], line[1]["last"]))
+
+    def test_the_race_snapshot_reads_the_live_timing(self):
+        latest = self.st.latest[2]
+        saved = latest["lapData"]
+        latest["lapData"] = [dict(c) for c in saved]
+        try:
+            for idx, c in enumerate(self.live((2, 0.0), (1, 0.6), (0, 1.0))[:3]):
+                latest["lapData"][idx].update(c)
+            self.assertAlmostEqual(race.Race(self.st).gaps[1]["gap"], -0.4, places=3)
+        finally:
+            latest["lapData"] = saved
+
+    def test_no_live_time_falls_back_to_the_line(self):
+        line = calc.gaps(self.st.laps, 0, [1, 2])
+        g = calc.gaps(self.st.laps, 0, [1, 2], live=self.live((2, 0.0), (1, 0.6), (0, 1.0), pitting=[1]))
+        self.assertEqual(g[1]["gap"], line[1]["gap"])  # in the pit lane the game sends 0
+        g = calc.gaps(self.st.laps, 0, [1, 2], live=self.live((0, 0.0), (2, 0.0), (1, 2.0)))
+        self.assertEqual(g[2]["gap"], line[2]["gap"])  # 0 but not leading: not timed
+        self.assertAlmostEqual(g[1]["gap"], 2.0, places=3)
 
     def test_trend_ignores_laps_across_a_stop(self):
         g = calc.gaps(self.st.laps, 0, [3])[3]
@@ -205,6 +245,32 @@ class Gaps(unittest.TestCase):
         self.assertIn("could undercut you: TSUNODA · you could undercut: ALONSO", text)
         self.assertIn("FR reaches 70% (worn out) in ≈16 laps, L24 — after the flag", text)
         self.assertIn("fuel   +30.0 laps vs target", text)
+
+    def test_the_stop_line_names_the_sets_he_can_fit_and_what_the_field_took(self):
+        text = brief.build(self.st)
+        self.assertIn("(12 laps after it; the second compound is still owed, so not Medium;", text)
+        self.assertIn("Hard new 0.70 s/lap quicker, ≈29% at the flag", text)  # FR 3%/lap × 21/26 × 12
+        self.assertIn("→ Hard new: the quickest that reaches the flag under 70% (worn out)", text)
+        self.assertIn("cars that have stopped, now on: Hard ×1 · not stopped yet, within 3 places of you: Medium ×2", text)
+
+    def test_the_stop_line_says_why_not_the_quicker_set(self):
+        soft = {"compound": 16, "wear": 5, "gain": 2.17, "at_flag": 71.4, "lasts": False}
+        hard = {"compound": 18, "wear": 0, "gain": 1.22, "at_flag": 43.0, "lasts": True}
+        p = {"options": [soft, hard], "pick": hard, "left": 12, "owed": True, "run": {17}, "wheel": 3}
+        with mock.patch.object(strategy, "dry_stop", return_value=p):
+            self.assertIn("→ Hard new: the quickest that reaches the flag under 70% (worn out); "
+                          "the Soft used 5% is 0.95 s/lap quicker but reaches ≈71%", brief.build(self.st))
+        with mock.patch.object(strategy, "dry_stop", return_value={**p, "pick": soft}):
+            self.assertIn("→ Soft used 5%: the quickest that reaches the flag under 70% (worn out), "
+                          "0.95 s/lap quicker than the Hard new", brief.build(self.st))
+        with mock.patch.object(strategy, "dry_stop", return_value=None):
+            self.assertNotIn("\nSTOP", brief.build(self.st))
+        with mock.patch.object(strategy, "dry_stop", return_value={**p, "pick": None}):
+            self.assertIn("→ none of them reaches the flag under 70% (worn out) from this lap", brief.build(self.st))
+        no_rate = [{**soft, "at_flag": None, "lasts": True}, {**hard, "at_flag": None, "lasts": False, "gain": -0.3}]
+        with mock.patch.object(strategy, "dry_stop", return_value={**p, "options": no_rate, "pick": no_rate[0], "wheel": None, "owed": False}):
+            self.assertIn("(12 laps after it; any set; pace = the set's estimate vs your fitted set; life = the set's own estimate): "
+                          "Soft used 5% 2.17 s/lap quicker, lasts · Hard new 0.30 s/lap slower, short", brief.build(self.st))
 
     def test_feed_lost_is_flagged_only_after_a_long_silence(self):
         st = self.st

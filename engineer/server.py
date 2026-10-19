@@ -16,10 +16,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import diagnostics, driver, log, radiolog, usage, view
+from . import archive, bundle, diagnostics, driver, llm, log, radiolog, usage, view
 from .crew import assemble
 from .pitwall import BUDGET, MODELS, notes
-from .engineer import DEFAULT_MODEL
+from .engineer import DEFAULT_MODEL, FALLBACK
 from .glance import glance
 from .hub import Hub
 from .lookups import BUTTONS
@@ -27,11 +27,12 @@ from .radio import QUICK, TRIGGER
 from .recorder import SessionRecorder
 from .state import RaceState
 from .tts import DEFAULT_VOICE
+from .version import VERSION
 
 _log = log.get("server")
 
 WEB = Path(__file__).resolve().parent.parent / "web"
-TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".wav": "audio/wav"}
+TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".wav": "audio/wav", ".zip": "application/zip"}
 # changes every server start; open pages reload when they see a new one (stale JS bit us)
 BUILD = str(time.time())
 
@@ -92,13 +93,15 @@ def make_handler(state, listen, hub, crew, recorder=None):
             self.end_headers()
             self.wfile.write(body)
 
-        def _file(self, name, root=WEB):
+        def _file(self, name, root=WEB, download=False):
             path = (root / name).resolve()
             if path.parent != root.resolve() or not path.is_file():
                 return self._json({"error": "not found"}, 404)
             body = path.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", TYPES.get(path.suffix, "application/octet-stream"))
+            if download:
+                self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -178,6 +181,9 @@ def make_handler(state, listen, hub, crew, recorder=None):
                 if path == "/api/fixes":
                     radio.lexicon.teach(body["heard"], body["meant"])
                     return self._json(radio.lexicon.fixes)
+                if path == "/api/bundle":
+                    return self._json(make_bundle(state, recorder, str(body.get("note", "")),
+                                                  bool(body.get("audio", True)), bool(body.get("telemetry", True))))
                 if path == "/api/fixes/forget":
                     radio.lexicon.forget(body["heard"])
                     return self._json(radio.lexicon.fixes)
@@ -219,6 +225,8 @@ def make_handler(state, listen, hub, crew, recorder=None):
                     return self._stream()
                 if url.path == "/api/clip":  # a radio message's audio, by the clip name on the message
                     return self._file(q["name"][0], radiolog.CLIPS)
+                if url.path == "/api/bundle":
+                    return self._file(q["name"][0], bundle.FOLDER, download=True)
                 if url.path == "/api/logs":
                     since = float(q.get("since", ["0"])[0])
                     return self._json([r for r in list(log.ring) if r["t"] > since])
@@ -234,8 +242,23 @@ def make_handler(state, listen, hub, crew, recorder=None):
     return Handler
 
 
+def make_bundle(state, recorder, note, audio, telemetry):
+    """A debug bundle of the session the game is in (or was in last), from the Diagnostics tab."""
+    with state.lock:
+        uid, lap = state.session_uid, None
+        pkt = state.latest.get(2)
+        if pkt and pkt["header"]["playerCarIndex"] < len(pkt["lapData"]):
+            lap = pkt["lapData"][pkt["header"]["playerCarIndex"]]["currentLapNum"]
+    if not uid:
+        raise ValueError("no session yet")
+    live = (recorder.path, recorder.started) if recorder and recorder.path and recorder.uid == uid else None
+    paths = bundle.make(uid, lap, note, audio, telemetry, live=live)
+    return {"folder": str(bundle.FOLDER), "files": [{"name": p.name, "bytes": p.stat().st_size} for p in paths]}
+
+
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--version", action="version", version=VERSION)
     ap.add_argument("--udp-port", type=int, default=20777)
     ap.add_argument("--http-port", type=int, default=8077)
     ap.add_argument("--no-record", action="store_true", help="don't save sessions to captures/sessions/")
@@ -246,6 +269,8 @@ def main():
     ap.add_argument("--quick-button", default=os.environ.get("RE_QUICK_BUTTON", QUICK), help="button for the quick brief")
     ap.add_argument("--engineer-model", default=os.environ.get("RE_ENGINEER_MODEL", DEFAULT_MODEL),
                     help="OpenRouter model id for the engineer")
+    ap.add_argument("--engineer-fallback", default=os.environ.get("RE_ENGINEER_FALLBACK", FALLBACK),
+                    help='tried when the engineer model has said nothing in a few seconds ("none" to turn it off)')
     ap.add_argument("--no-engineer", action="store_true", help="transcribe only, no LLM replies")
     ap.add_argument("--no-voice", action="store_true", help="text only, the engineer doesn't speak aloud")
     ap.add_argument("--voice", default=os.environ.get("RE_VOICE", DEFAULT_VOICE),
@@ -259,13 +284,17 @@ def main():
     ap.add_argument("--no-pitwall", action="store_true", help="no strategy team: the engineer and the code make the calls")
     args = ap.parse_args()
 
+    llm.TRACE = archive.DATA / "llm"
+    log.to_file(archive.DATA / "logs")
+    _log.info("starting", version=VERSION, python=sys.version.split()[0], platform=sys.platform, **vars(args))
     hub = Hub()
     state = RaceState(hub)
     crew = assemble(hub, state, args.engineer_model, engineer=not args.no_engineer, mic=not args.no_radio,
                     radio_mode=args.radio_mode, voice=None if args.no_voice else args.voice, fx=args.radio_fx,
                     device=args.audio_out, calls=not args.no_calls,
                     team=None if args.no_pitwall else args.pitwall_models.split(","), budget=args.pitwall_budget,
-                    buttons={"trigger": args.radio_button, "quick": args.quick_button})
+                    buttons={"trigger": args.radio_button, "quick": args.quick_button},
+                    fallback=None if args.engineer_fallback == "none" else args.engineer_fallback)
     recorder = None if args.no_record else SessionRecorder()
     listen = {"ip": lan_ip(), "udpPort": args.udp_port, "recording": None,
               "dev": os.environ.get("RE_ENV") != "prod"}
