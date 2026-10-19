@@ -74,6 +74,42 @@ def slick_call(b):
     return p["pick"][0], p["pick"][1], p["left"], on
 
 
+def dry_stop(b):
+    """On slicks with a stop still to make (a second compound owed, or the fitted set won't reach the flag
+    under WORN): each set you could fit this lap, best of each compound, with its pace against the fitted
+    set and the wear it reaches by the flag; the quickest that stays under WORN. Or None.
+
+    The wear is your fastest-wearing tyre's rate this stint, scaled by each compound's life against the
+    fitted one's. The sets' own lifeSpan runs on well past WORN at the player's wear; it's the fallback."""
+    status, sets, hist = b.status(), b.st.tyre_sets.get(b.me), b.st.history.get(b.me)
+    if not b.race or not status or status["visualTyreCompound"] not in calc.DRY or not sets or b.my["pitStatus"]:
+        return None
+    left = b.s["totalLaps"] - b.my["currentLapNum"]
+    run = {t["tyreVisualCompound"] for t in hist["tyreStintsHistoryData"][:hist["numTyreStints"]]} if hist else set()
+    run.add(status["visualTyreCompound"])
+    owed = not b.sprint() and len(run) < 2  # a stint on inters or wets counts too
+    flag = wear_at(b, b.s["totalLaps"])
+    if left < 1 or not (owed or flag and flag[1] > WORN):
+        return None
+    fitted = sets["tyreSetData"][sets["fittedIdx"]]
+    rate = flag and calc.wear_rates(b.st.laps.cars.get(b.me, []))[flag[0]]
+    best = {}
+    for i, s in enumerate(sets["tyreSetData"]):
+        c = s["visualTyreCompound"]
+        if (s["available"] and i != sets["fittedIdx"] and c in calc.DRY and not (owed and c in run)
+                and (c not in best or s["lapDeltaTime"] < best[c]["lapDeltaTime"])):
+            best[c] = s
+    options = []
+    for c, s in best.items():
+        at = s["wear"] + rate * fitted["usableLife"] / s["usableLife"] * left if rate and s["usableLife"] and fitted["usableLife"] else None
+        options.append({"compound": c, "wear": s["wear"], "gain": -s["lapDeltaTime"] / 1000, "at_flag": at,
+                        "lasts": at <= WORN if at is not None else s["lifeSpan"] >= left * LIFE_MARGIN})
+    options.sort(key=lambda o: -o["gain"])
+    pick = next((o for o in options if o["lasts"]), None)
+    return {"options": options, "pick": pick, "left": left, "owed": owed, "run": run,
+            "wheel": flag and flag[0]} if options else None
+
+
 def fresh_gain(b):
     """(s/lap new tyres are worth, where that comes from): measured from this race's stops onto the
     same kind of tyre as yours (dry or wet) once there are two, else the tyre sets' own estimate."""

@@ -73,6 +73,11 @@ class Race:
         """Laps still to start after this one."""
         return self.s["totalLaps"] - self.my["currentLapNum"]
 
+    def sprint(self):
+        """The first race of a weekend with more than one: no compulsory stop."""
+        races = [t for t in self.s["weekendStructure"][:self.s["numSessionsInWeekend"]] if t in RACES]
+        return len(races) > 1 and self.s["sessionType"] == min(races)
+
     def red_flag(self):
         """The red flag still in force (its restart's lights haven't gone out yet), else None."""
         for ev in reversed(self.st.events):
