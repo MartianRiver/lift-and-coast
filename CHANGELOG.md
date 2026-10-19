@@ -2,7 +2,7 @@
 
 What changed in each release, for someone using it. How versions work: [docs/releasing.md](docs/releasing.md).
 
-## 0.2.0
+## 0.2.0 (2026-10-19)
 
 This version is about trusting what the engineer says and finding out what went wrong when it doesn't.
 
