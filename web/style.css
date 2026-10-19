@@ -243,9 +243,10 @@ body[data-tab="race"] .radio-card { display: none; }
 .pw-say { padding-left: 10px; border-left: 3px solid var(--warn); margin: 4px 0; }
 .pw-why { color: var(--muted); margin-top: 4px; }
 .rc-plan { font-size: 15px; }
-.pw-brief textarea { width: 100%; box-sizing: border-box; margin: 4px 0; background: var(--panel-2); color: var(--text);
+.pw-brief textarea, .bundle textarea { width: 100%; box-sizing: border-box; margin: 4px 0; background: var(--panel-2); color: var(--text);
   border: 1px solid var(--line); border-radius: 4px; padding: 6px; font: inherit; resize: vertical; }
 .pw-brief { margin-bottom: 14px; }
+.bundle label { display: block; margin-top: 6px; }
 
 .driver-btn { font-size: 12px; }
 dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 20px; width: min(420px, calc(100vw - 32px)); }

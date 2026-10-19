@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import archive, diagnostics, driver, llm, log, radiolog, usage, view
+from . import archive, bundle, diagnostics, driver, llm, log, radiolog, usage, view
 from .crew import assemble
 from .pitwall import BUDGET, MODELS, notes
 from .engineer import DEFAULT_MODEL, FALLBACK
@@ -32,7 +32,7 @@ from .version import VERSION
 _log = log.get("server")
 
 WEB = Path(__file__).resolve().parent.parent / "web"
-TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".wav": "audio/wav"}
+TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".wav": "audio/wav", ".zip": "application/zip"}
 # changes every server start; open pages reload when they see a new one (stale JS bit us)
 BUILD = str(time.time())
 
@@ -93,13 +93,15 @@ def make_handler(state, listen, hub, crew, recorder=None):
             self.end_headers()
             self.wfile.write(body)
 
-        def _file(self, name, root=WEB):
+        def _file(self, name, root=WEB, download=False):
             path = (root / name).resolve()
             if path.parent != root.resolve() or not path.is_file():
                 return self._json({"error": "not found"}, 404)
             body = path.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", TYPES.get(path.suffix, "application/octet-stream"))
+            if download:
+                self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -179,6 +181,9 @@ def make_handler(state, listen, hub, crew, recorder=None):
                 if path == "/api/fixes":
                     radio.lexicon.teach(body["heard"], body["meant"])
                     return self._json(radio.lexicon.fixes)
+                if path == "/api/bundle":
+                    return self._json(make_bundle(state, recorder, str(body.get("note", "")),
+                                                  bool(body.get("audio", True)), bool(body.get("telemetry", True))))
                 if path == "/api/fixes/forget":
                     radio.lexicon.forget(body["heard"])
                     return self._json(radio.lexicon.fixes)
@@ -220,6 +225,8 @@ def make_handler(state, listen, hub, crew, recorder=None):
                     return self._stream()
                 if url.path == "/api/clip":  # a radio message's audio, by the clip name on the message
                     return self._file(q["name"][0], radiolog.CLIPS)
+                if url.path == "/api/bundle":
+                    return self._file(q["name"][0], bundle.FOLDER, download=True)
                 if url.path == "/api/logs":
                     since = float(q.get("since", ["0"])[0])
                     return self._json([r for r in list(log.ring) if r["t"] > since])
@@ -233,6 +240,20 @@ def make_handler(state, listen, hub, crew, recorder=None):
                 return self._json({"error": str(e)}, 500)
 
     return Handler
+
+
+def make_bundle(state, recorder, note, audio, telemetry):
+    """A debug bundle of the session the game is in (or was in last), from the Diagnostics tab."""
+    with state.lock:
+        uid, lap = state.session_uid, None
+        pkt = state.latest.get(2)
+        if pkt and pkt["header"]["playerCarIndex"] < len(pkt["lapData"]):
+            lap = pkt["lapData"][pkt["header"]["playerCarIndex"]]["currentLapNum"]
+    if not uid:
+        raise ValueError("no session yet")
+    live = (recorder.path, recorder.started) if recorder and recorder.path and recorder.uid == uid else None
+    paths = bundle.make(uid, lap, note, audio, telemetry, live=live)
+    return {"folder": str(bundle.FOLDER), "files": [{"name": p.name, "bytes": p.stat().st_size} for p in paths]}
 
 
 def main():

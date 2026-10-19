@@ -70,6 +70,18 @@ def read(path):
             yield t, buf
 
 
+def write(path, records):
+    """(seconds, datagram) pairs to a new .f1cap, or a .f1cap.xz compressed as the archive does. -> how many."""
+    n = 0
+    with (lzma.open(path, "wb", preset=1) if str(path).endswith(".xz") else open(path, "wb")) as f:
+        f.write(MAGIC)
+        for t, buf in records:
+            f.write(_REC.pack(t, len(buf)))
+            f.write(buf)
+            n += 1
+    return n
+
+
 def _is_buttons(buf):
     # header is 29 bytes with packetId at offset 6; the event code follows the header
     return len(buf) > 33 and buf[6] == 3 and buf[29:33] == b"BUTN"

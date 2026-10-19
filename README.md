@@ -78,6 +78,7 @@ uv run python -m engineer.dev sessions                # every recorded session
 uv run python -m engineer.dev brief race --lap 10     # what the engineer could see at lap 10 of your last race
 uv run python -m engineer.dev serve race --lap 10     # the dashboard and engineer frozen at that moment, on :8078
 uv run python -m engineer.dev calls race              # everything it would have said unprompted
+uv run python -m engineer.bundle race --lap 10        # a debug bundle, as the Diagnostics tab makes it
 uv run python -m unittest
 ```
 
@@ -91,7 +92,7 @@ The strategy evals (`engineer.evals`) read moments to test from `evals/cases.tom
 
 ## Issues and ideas
 
-I'm not taking pull requests. It's a personal project and I'd like to keep the code in one head. Bug reports and feature requests are very welcome as issues, though. For a bug, it helps to know the game, the platform, the UDP format and what the server printed. There's a bit more in [CONTRIBUTING.md](CONTRIBUTING.md).
+I'm not taking pull requests. It's a personal project and I'd like to keep the code in one head. Bug reports and feature requests are very welcome as issues, though. For a bug, a debug bundle from the Diagnostics tab has everything I'd need; without one, the game, the platform, the UDP format and what the server printed. There's a bit more in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
