@@ -68,7 +68,7 @@ class Quick(unittest.TestCase):
             self.r.st.latest[2]["lapData"][0]["lastLapTimeInMS"], last = 0, self.r.st.latest[2]["lapData"][0]["lastLapTimeInMS"]
             self.assertEqual(quick.brief(self.r.st)["text"], "P2, no time yet.")  # quali, still on the out-lap
             self.s["sessionType"] = 3
-            self.assertIsNone(quick.brief(self.r.st))  # practice, no lap done yet
+            self.assertTrue(quick.brief(self.r.st)["text"].startswith("No lap time yet. "))  # practice, then the worst tyre
             self.r.st.latest[2]["lapData"][0]["lastLapTimeInMS"] = last
         mine = calc.best_ms(self.r.st.history.get(0))
         with mock.patch.object(calc, "best_ms", lambda hist: mine if hist is self.r.st.history.get(0) else None):

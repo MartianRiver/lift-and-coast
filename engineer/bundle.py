@@ -152,8 +152,8 @@ def make(uid, lap=None, note="", audio=True, telemetry=True, live=None, out=None
         raise ValueError(f"no recording for session {uid}")
     spans = windows(uid, parts)
     info = dict(row) if row else {"uid": str(uid)}
-    name = "-".join(x for x in ("lift-and-coast", (info.get("started_at") or "").replace(" ", "_").replace(":", ""),
-                                info.get("track"), info.get("type")) if x).replace(" ", "-")
+    # the recording's own name: date, time, track and session type, even before the catalogue has them
+    name = "lift-and-coast-" + parts[-1][0].name.split(".")[0]
     folder = Path(out or FOLDER)
     folder.mkdir(parents=True, exist_ok=True)
     _log.info("making debug bundle", uid=str(uid), parts=len(parts), audio=audio, telemetry=telemetry)

@@ -44,11 +44,11 @@ class Bundle(unittest.TestCase):
         for i in range(200):
             t = i * 0.05
             recs += [(t, packet(0, t)), (t, packet(2, t)), (t, packet(11, t, car=1, numLaps=1 + (i >= 100)))]
-        capture.write(self.tmp / "sessions" / "race.f1cap.xz", recs)
+        capture.write(self.tmp / "sessions" / "2026-10-18_160530_Brazil_Race-2.f1cap.xz", recs)
         db = archive.connect()
         with db:
             db.execute("insert into sessions (uid, started_at, track, type) values ('7', '2026-10-18 16:05:30', 'Brazil', 'Race 2')")
-            db.execute("insert into files (path, session_uid, started_at, seconds) values ('sessions/race.f1cap.xz', '7', '2026-10-18 16:05:30', ?)",
+            db.execute("insert into files (path, session_uid, started_at, seconds) values ('sessions/2026-10-18_160530_Brazil_Race-2.f1cap.xz', '7', '2026-10-18 16:05:30', ?)",
                        (seconds,))
         db.close()
         return recs
@@ -115,7 +115,7 @@ class Bundle(unittest.TestCase):
                          ("said 43%", {"lap": 13}, 1, []))
         self.assertEqual(manifest["runs"], [{"version": "0.2.0", "engineer_model": "moonshotai/kimi-k3", "mic": "MacBook Air Microphone"}])
         self.assertEqual(manifest["session"]["track"], "Brazil")
-        self.assertEqual(z.name, "lift-and-coast-2026-10-18_160530-Brazil-Race-2.zip")
+        self.assertEqual(z.name, "lift-and-coast-2026-10-18_160530_Brazil_Race-2.zip")
 
     def test_audio_and_telemetry_can_be_left_out(self):
         self.session()
@@ -148,11 +148,12 @@ class Bundle(unittest.TestCase):
 
     def test_the_file_still_being_recorded_is_included(self):
         recs = self.session()
-        live = self.tmp / "sessions" / "live.f1cap"
+        live = self.tmp / "sessions" / "2026-10-18_163000_Brazil_Race-2.f1cap"
         capture.write(live, [(0.0, packet(2, 0.0))])
         began = time.time() - 300  # the second part, five minutes in
         self.radio({"kind": "message", "at": began + 100, "text": "on the second part"})
         [z] = bundle.make("7", live=(live, began))
+        self.assertEqual(z.name, "lift-and-coast-2026-10-18_163000_Brazil_Race-2.zip")  # named after the newest part
         label, files = bundle.open_bundle(z)
         self.assertEqual(sum(1 for f in files for _ in capture.read(f)), len(list(bundle.slim(recs))) + 1)
         with zipfile.ZipFile(z) as zf:
@@ -168,7 +169,7 @@ class Bundle(unittest.TestCase):
             parts = bundle.make("7")
         self.assertGreater(len(parts), 1)
         self.assertTrue(all(p.stat().st_size <= 450_000 for p in parts))
-        self.assertEqual([p.name for p in parts], [f"lift-and-coast-2026-10-18_160530-Brazil-Race-2-part{i}of{len(parts)}.zip"
+        self.assertEqual([p.name for p in parts], [f"lift-and-coast-2026-10-18_160530_Brazil_Race-2-part{i}of{len(parts)}.zip"
                                                    for i in range(1, len(parts) + 1)])
         with zipfile.ZipFile(parts[-1]) as zf:
             files = json.loads(zf.read("manifest.json"))["files"]
