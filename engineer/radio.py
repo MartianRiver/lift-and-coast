@@ -42,6 +42,7 @@ class Radio:
         self.lexicon = lexicon or Lexicon()
         self.listeners = []  # fn(msg) for every finished message, called on the STT thread
         self.on_open = []    # fn() when the radio opens: the engineer stops talking
+        self.on_quick = []   # fn() when the quick-brief button is pressed, on its own thread: presses arrive under the state lock
         self.trigger, self.quick = button(trigger), button(quick)
         self.stt = None
         self.status = "loading"
@@ -98,6 +99,8 @@ class Radio:
         if now >> self.quick & 1 and not prev >> self.quick & 1:
             _log.info("quick brief requested")
             self.hub.publish("quick", {"at": time.time()})
+            for fn in self.on_quick:
+                threading.Thread(target=fn, name="quick", daemon=True).start()
 
     def edge(self, pressed, source):
         """Trigger pressed/released. Toggle mode flips on press; hold mode follows the button."""

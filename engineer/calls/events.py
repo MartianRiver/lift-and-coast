@@ -108,12 +108,19 @@ def conditions(b, mem):
     if dmg:
         now, before = hurt(dmg), mem.get("hurt", {})
         mem["hurt"] = now
+        if any(v < before.get(k, 0) for k, v in now.items()) or before.keys() - now.keys():
+            mem.pop("damage said", None)  # a flashback undid it: the same damage again is news
         if any(v >= before.get(k, 0) + 2 for k, v in now.items()):  # a flashback lowers it and re-arms
-            out.append(call(("damage", tuple(sorted(now.items()))), "damage", NORMAL, _damage, ttl=40))
+            out.append(call(("damage", tuple(sorted(now.items()))), "damage", NORMAL, lambda b: _damage(b, mem), ttl=40))
     return out
 
 
-def _damage(b):
+def _damage(b, mem):
+    """Rebuilt when it's said, so two hits close together can come out the same: say that once."""
     dmg = b.damage()
     parts = hurt(dmg) if dmg else {}
-    return "Damage: " + ", ".join(f"{k} {v}%" for k, v in parts.items()) + "." if parts else None
+    text = "Damage: " + ", ".join(f"{k} {v}%" for k, v in parts.items()) + "." if parts else None
+    if text == mem.get("damage said"):
+        return None
+    mem["damage said"] = text
+    return text

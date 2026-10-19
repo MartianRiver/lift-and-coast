@@ -50,6 +50,8 @@ In the game, under Settings → Telemetry: UDP on, broadcast off, the IP of the 
 
 While it's held, the server records from the computer's microphone: whichever input is the default in your system's sound settings, so a headset or USB mic connected to the computer works once it's set as the input. A headset plugged into the console or the controller doesn't: its sound goes to the console, and the game doesn't pass it on. The engineer answers through the computer's default output (`--audio-out` picks another). If you'd rather not bind a UDP Action, `--radio-button "Right Stick Click"` listens for a controller button directly, or for another UDP Action number.
 
+**The quick brief.** Bind **UDP Action 2** too (I use the right stick click) and one press, no talking, gets the numbers straight away: in a race your position, the cars either side with their gaps and whether they're coming or going, and your most worn tyre; in qualifying where you stand against P1; in practice your last lap against your best. It needs no model, so it works without a connection. `--quick-button` picks another button.
+
 ## Options
 
 `uv run python -m engineer.server --help` lists everything. The ones you're most likely to want:

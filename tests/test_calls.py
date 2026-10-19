@@ -192,6 +192,34 @@ class RedFlag(unittest.TestCase):
         self.assertNotIn("RED FLAG", brief.build(self.r.st))
 
 
+class Damage(unittest.TestCase):
+    def test_two_hits_said_once_when_they_read_the_same(self):
+        # Brazil: front wing, then the rear wing a moment later; both calls were rebuilt as "front wing right 80%, rear wing 66%"
+        b, mem = Race(raced(3).st), {}
+        dmg = b.damage()
+        dmg["frontRightWingDamage"] = 80
+        (first,) = [c for c in events.conditions(b, mem) if c["topic"] == "damage"]
+        dmg["rearWingDamage"] = 66
+        (second,) = [c for c in events.conditions(b, mem) if c["topic"] == "damage"]
+        self.assertEqual(first["text"](b), "Damage: front wing right 80%, rear wing 66%.")
+        self.assertIsNone(second["text"](b))
+        dmg["frontRightWingDamage"] = 100
+        (third,) = [c for c in events.conditions(b, mem) if c["topic"] == "damage"]
+        self.assertEqual(third["text"](b), "Damage: front wing right 100%, rear wing 66%.")
+
+    def test_after_a_flashback_the_same_damage_is_said_again(self):
+        b, mem = Race(raced(3).st), {}
+        dmg = b.damage()
+        dmg["frontRightWingDamage"] = 80
+        (c,) = [c for c in events.conditions(b, mem) if c["topic"] == "damage"]
+        self.assertIsNotNone(c["text"](b))
+        dmg["frontRightWingDamage"] = 0
+        events.conditions(b, mem)
+        dmg["frontRightWingDamage"] = 80
+        (again,) = [c for c in events.conditions(b, mem) if c["topic"] == "damage"]
+        self.assertEqual(again["text"](b), "Damage: front wing right 80%.")
+
+
 class Level(unittest.TestCase):
     def test_voice_commands_change_how_much_is_said(self):
         c = Caller(raced(3).st, Hub())

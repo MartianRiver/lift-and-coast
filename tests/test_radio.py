@@ -1,3 +1,4 @@
+import threading
 import time
 import unittest
 
@@ -67,7 +68,10 @@ class Hold(unittest.TestCase):
 
     def test_quick_publishes_without_opening(self):
         r = make("hold")
+        pressed = threading.Event()
+        r.on_quick.append(lambda: pressed.set() if threading.current_thread() is not threading.main_thread() else None)
         r.on_buttons(0, 1 << button(2))
+        self.assertTrue(pressed.wait(2))  # off the packet thread, which holds the state lock
         self.assertIsNone(r._frames)
         self.assertIn("quick", [k for k, _ in r.hub.events])
 
