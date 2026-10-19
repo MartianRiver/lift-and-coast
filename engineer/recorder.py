@@ -9,7 +9,7 @@ closed and archived after IDLE_CLOSE seconds; the same session resuming opens a 
 import struct
 import time
 
-from . import archive, log
+from . import archive, log, radiolog
 from .capture import Writer
 from .decode import decode
 
@@ -56,6 +56,8 @@ class SessionRecorder:
         self.close()
         self.uid, self.started, self.named = uid, time.time(), False
         self.writer = Writer(archive.unique(self.folder / f"{archive.label(self.started, None)}.f1cap"))
+        radiolog.record("recording", {"uid": str(uid), "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.started)),
+                                      "wall0": self.writer.wall0})
 
     def _name(self, buf):
         try:

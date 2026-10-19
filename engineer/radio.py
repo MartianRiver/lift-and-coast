@@ -170,11 +170,12 @@ class Radio:
 
     def _finish(self, audio, closed_at):
         secs = len(audio) / SAMPLE_RATE
+        start = time.time() - secs  # called straight after the last frame, so the clip ends now
         peak = float(abs(audio).max()) if len(audio) else 0.0
         loud = loudest(audio)
         clip = self._save(audio, closed_at)
         _log.info("radio closed", audio_s=round(secs, 2), peak=round(peak, 3), loud=round(loud, 4), clip=clip)
-        extra = {"clip": clip and Path(clip).name, "loud": round(loud, 4)}
+        extra = {"clip": clip and Path(clip).name, "loud": round(loud, 4), "clip_start": round(start, 3)}
         if secs < MIN_AUDIO_S:
             return self._message("", secs, 0, closed_at, note="too short", **extra)
         if loud < SILENT_RMS:
@@ -208,7 +209,7 @@ class Radio:
         """A question typed in the dashboard, handled exactly like a spoken one."""
         self._message(text.strip(), 0, 0, time.time(), source="typed")
 
-    def _message(self, heard, secs, stt_ms, closed_at, note=None, source="radio", clip=None, loud=None):
+    def _message(self, heard, secs, stt_ms, closed_at, note=None, source="radio", clip=None, loud=None, clip_start=None):
         text, changes = self.lexicon.correct(heard, self.names()) if heard else (heard, [])
         msg = {
             "id": f"{closed_at:.3f}",
@@ -223,6 +224,7 @@ class Radio:
             "driver": self.driver(),
             "source": source,
             "clip": clip,
+            "clipStart": clip_start,
             "loud": loud,
         }
         self.messages.append(msg)

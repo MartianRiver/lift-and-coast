@@ -1,7 +1,11 @@
 """Streaming chat completions (stdlib only). OpenRouter by default; RE_LLM_URL points it at any
-OpenAI-compatible endpoint (a local server, OpenAI itself) with RE_LLM_KEY as its key, if it needs one."""
+OpenAI-compatible endpoint (a local server, OpenAI itself) with RE_LLM_KEY as its key, if it needs one.
+
+The live server and `dev prep --run` set TRACE, and every call's messages and reply then go in TRACE/<date>.jsonl, so a bad
+answer can be read back exactly as the model saw it."""
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -13,6 +17,8 @@ _log = log.get("llm")
 
 OPENROUTER = "https://openrouter.ai/api/v1"
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+TRACE = None  # a folder, or None: dev tools and evals aren't kept
+_trace_lock = threading.Lock()
 
 
 class LLMError(Exception):
@@ -50,13 +56,34 @@ def api_key():
 def stream(model, messages, on_text, effort="low", max_tokens=4000, timeout=60, role="other", at=usage.NOWHERE, why=None):
     """Stream a reply, calling on_text(chunk) as content arrives. -> stats dict. Raises LLMError.
     Every call is recorded with its cost: `role` (engineer, strategist, judge…), `at` = usage.where(state)."""
+    started, got = time.time(), []
+
+    def collect(text):
+        got.append(text)
+        on_text(text)
     try:
-        stats = _stream(model, messages, on_text, effort, max_tokens, timeout)
+        stats = _stream(model, messages, collect, effort, max_tokens, timeout)
     except LLMError as e:
         usage.llm(role, model, at=at, why=why, error=str(e))
+        _keep(started, role, why, at, model, messages, "".join(got), error=str(e))
         raise
     usage.llm(role, model, stats, at, why)
+    _keep(started, role, why, at, model, messages, "".join(got), stats=stats)
     return stats
+
+
+def _keep(started, role, why, at, model, messages, reply, **result):
+    if TRACE is None:
+        return
+    row = {"at": round(started, 3), "role": role, "why": why, "session": at[0], "model": model,
+           "messages": messages, "reply": reply, **result}
+    try:
+        with _trace_lock:
+            TRACE.mkdir(parents=True, exist_ok=True)
+            with (TRACE / time.strftime("%Y%m%d.jsonl", time.localtime(started))).open("a") as f:
+                f.write(json.dumps(row) + "\n")
+    except OSError as e:
+        _log.error("couldn't keep model call", error=str(e))
 
 
 def _stream(model, messages, on_text, effort, max_tokens, timeout):

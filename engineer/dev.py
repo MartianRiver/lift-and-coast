@@ -20,7 +20,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import archive, brief, driver, log
+from . import archive, brief, driver, llm, log
 from .calls import Caller
 from .capture import read
 from .engineer import DEFAULT_MODEL, prompt
@@ -210,6 +210,7 @@ def cmd_prep(args):
     print(text or info)
     if not (text and args.run):
         return
+    llm.TRACE = archive.DATA / "llm"  # the race uses this plan, so it's kept like the live calls
     wall = PitWall(RaceState(Quiet()), Quiet(), args.models.split(","), persist=False)
     wall._prepare()
     p = wall.prep

@@ -1,19 +1,20 @@
 """Every radio message and what the engineer did with it, kept next to the clips for review.
 
 One JSON line per message and per reply in captures/radio/messages.jsonl (gitignored with the clips),
-so a mishearing or a pointless answer can be traced back to the audio after a restart.
+so a mishearing or a pointless answer can be traced back to the audio after a restart. Live, it also
+gets every unprompted call as made, every stretch of the engineer's voice as played, and the start of
+each session recording on the wall clock, which together put the whole radio on the race's timeline.
 
     uv run python -m engineer.dev radio [--last 20]
 """
 import json
 import threading
-from pathlib import Path
 
-from . import log
+from . import archive, log
 
 _log = log.get("radiolog")
 
-CLIPS = Path(__file__).resolve().parent.parent / "captures" / "radio"
+CLIPS = archive.DATA / "radio"
 LOG = CLIPS / "messages.jsonl"
 _lock = threading.Lock()
 

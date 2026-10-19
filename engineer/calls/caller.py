@@ -10,7 +10,7 @@ import threading
 import time
 from collections import deque
 
-from .. import log, usage
+from .. import log, radiolog, usage
 from ..race import Race, ready
 from ..spec import MAX_CARS
 from .common import LOW, NORMAL, URGENT
@@ -142,5 +142,7 @@ class Caller:
                "sessionTime": round(now, 1), "topic": c["topic"], "prio": c["prio"], "text": text}
         self.sent.appendleft(out)
         self.hub.publish("call", out)
+        if self.at:  # live only: what was really said, which a later `dev calls` replay can't tell you
+            radiolog.record("call", out)
         _log.info("call", topic=c["topic"], lap=out["lap"], dist=out["dist"], text=text)
         return out

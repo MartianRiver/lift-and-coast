@@ -8,6 +8,7 @@ from engineer import archive
 from engineer.capture import read
 from engineer.recorder import SessionRecorder
 from engineer.spec import PACKETS
+from tests import radio_rows
 
 
 def packet(pid, uid, t=1.0, **fields):
@@ -93,6 +94,19 @@ class Recording(unittest.TestCase):
         self.assertIsNotNone(rec.writer)
         rec.close(wait=True)
         self.assertEqual(len(list(self.tmp.joinpath("sessions").glob("*.f1cap.xz"))), 2)
+
+    def test_each_file_puts_its_start_on_the_radio_log(self):
+        rows = radio_rows(self)
+        rec = SessionRecorder(self.tmp / "sessions")
+        rec.write(session(666))
+        first = rec.writer.wall0
+        rec.last_write -= 300
+        rec.idle()
+        rec.write(history(666, [70000]))  # a second part has its own t=0
+        second = rec.writer.wall0
+        rec.close(wait=True)
+        self.assertEqual([(r["uid"], r["wall0"]) for r in rows("recording")], [("666", first), ("666", second)])
+        self.assertLess(first, second)
 
 
 if __name__ == "__main__":
