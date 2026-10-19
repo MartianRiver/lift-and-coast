@@ -3,6 +3,7 @@ evals and dev on the side) and how long each step takes, from the usage tables."
 import time
 
 from . import archive, formats, usage
+from .version import VERSION
 
 LATENCY = (("stt_ms", "speech to text", "ms"), ("release_ms", "release → text on screen", "ms"),
            ("tts_ms", "voice: text → first audio", "ms"), ("call_delay_s", "call queued → said", "s"))
@@ -22,7 +23,7 @@ def report(st, wall=None):
                 "allTime": _spend(db, "1 = 1", ()),
                 "byType": _by_type(db), "recent": _recent(db), "offSession": _off_session(db),
                 "latency": _latency(db, uid), "counts": _counts(db, uid), "errors": _errors(db, uid),
-                "feed": _feed(st)}
+                "feed": _feed(st), "version": VERSION}
     finally:
         db.close()
 

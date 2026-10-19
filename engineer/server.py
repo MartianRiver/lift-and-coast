@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlparse
 from . import archive, diagnostics, driver, llm, log, radiolog, usage, view
 from .crew import assemble
 from .pitwall import BUDGET, MODELS, notes
-from .engineer import DEFAULT_MODEL
+from .engineer import DEFAULT_MODEL, FALLBACK
 from .glance import glance
 from .hub import Hub
 from .lookups import BUTTONS
@@ -27,6 +27,7 @@ from .radio import QUICK, TRIGGER
 from .recorder import SessionRecorder
 from .state import RaceState
 from .tts import DEFAULT_VOICE
+from .version import VERSION
 
 _log = log.get("server")
 
@@ -236,6 +237,7 @@ def make_handler(state, listen, hub, crew, recorder=None):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--version", action="version", version=VERSION)
     ap.add_argument("--udp-port", type=int, default=20777)
     ap.add_argument("--http-port", type=int, default=8077)
     ap.add_argument("--no-record", action="store_true", help="don't save sessions to captures/sessions/")
@@ -246,6 +248,8 @@ def main():
     ap.add_argument("--quick-button", default=os.environ.get("RE_QUICK_BUTTON", QUICK), help="button for the quick brief")
     ap.add_argument("--engineer-model", default=os.environ.get("RE_ENGINEER_MODEL", DEFAULT_MODEL),
                     help="OpenRouter model id for the engineer")
+    ap.add_argument("--engineer-fallback", default=os.environ.get("RE_ENGINEER_FALLBACK", FALLBACK),
+                    help='tried when the engineer model has said nothing in a few seconds ("none" to turn it off)')
     ap.add_argument("--no-engineer", action="store_true", help="transcribe only, no LLM replies")
     ap.add_argument("--no-voice", action="store_true", help="text only, the engineer doesn't speak aloud")
     ap.add_argument("--voice", default=os.environ.get("RE_VOICE", DEFAULT_VOICE),
@@ -261,14 +265,15 @@ def main():
 
     llm.TRACE = archive.DATA / "llm"
     log.to_file(archive.DATA / "logs")
-    _log.info("starting", python=sys.version.split()[0], platform=sys.platform, **vars(args))
+    _log.info("starting", version=VERSION, python=sys.version.split()[0], platform=sys.platform, **vars(args))
     hub = Hub()
     state = RaceState(hub)
     crew = assemble(hub, state, args.engineer_model, engineer=not args.no_engineer, mic=not args.no_radio,
                     radio_mode=args.radio_mode, voice=None if args.no_voice else args.voice, fx=args.radio_fx,
                     device=args.audio_out, calls=not args.no_calls,
                     team=None if args.no_pitwall else args.pitwall_models.split(","), budget=args.pitwall_budget,
-                    buttons={"trigger": args.radio_button, "quick": args.quick_button})
+                    buttons={"trigger": args.radio_button, "quick": args.quick_button},
+                    fallback=None if args.engineer_fallback == "none" else args.engineer_fallback)
     recorder = None if args.no_record else SessionRecorder()
     listen = {"ip": lan_ip(), "udpPort": args.udp_port, "recording": None,
               "dev": os.environ.get("RE_ENV") != "prod"}

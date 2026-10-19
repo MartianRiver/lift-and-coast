@@ -14,7 +14,7 @@ What does leave your computer is what the engineer and the strategy team need to
 - the name and pronouns you gave it, so it talks to you rather than about "the driver";
 - for the strategy team, the brief you gave it ("damage control, few rewinds") and its own earlier notes from this race.
 
-OpenRouter passes the request to whichever provider runs the model. What they keep is up to their policies, and OpenRouter's account settings let you rule out providers that log or train on requests. If you'd rather nothing left your computer at all, run a model locally (Ollama, LM Studio, anything OpenAI-compatible) and point `RE_LLM_URL` at it.
+If the engineer's model hasn't started answering within a few seconds, the same request goes to a second model (Claude Haiku 5.5 unless you've picked another with `--engineer-fallback`). OpenRouter passes the request to whichever provider runs the model. What they keep is up to their policies, and OpenRouter's account settings let you rule out providers that log or train on requests. If you'd rather nothing left your computer at all, run a model locally (Ollama, LM Studio, anything OpenAI-compatible) and point `RE_LLM_URL` at it.
 
 Your API key is only sent to that endpoint, and it's never written to the log.
 

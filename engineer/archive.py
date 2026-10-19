@@ -67,15 +67,36 @@ create table if not exists field_wear (session_uid text, lap int, rates text, pr
 create table if not exists session_data (session_uid text primary key, forecast text, sets text, weekend text);
 create index if not exists notes_session on notes (session_uid);
 """
+# STEPS[n] takes the catalogue from user_version n to n + 1. Steps only ever add tables and columns, so an
+# older version still opens a newer catalogue; anything that renames or drops is a 0.x.0 (docs/releasing.md).
+STEPS = [SCHEMA]
 
 
 def connect():
     DATA.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DB, timeout=30)
     db.row_factory = sqlite3.Row
-    db.executescript(SCHEMA)
+    _upgrade(db)
     _relative_paths(db)
     return db
+
+
+def _upgrade(db):
+    if db.execute("pragma user_version").fetchone()[0] >= len(STEPS):
+        return
+    db.execute("begin immediate")  # the server and a dev tool can open it at once: one of them upgrades
+    have = db.execute("pragma user_version").fetchone()[0]
+    try:
+        for n in range(have, len(STEPS)):
+            for statement in filter(str.strip, STEPS[n].split(";")):
+                db.execute(statement)
+            db.execute(f"pragma user_version = {n + 1}")
+        db.commit()
+    except sqlite3.Error:
+        db.rollback()
+        raise
+    if have < len(STEPS):
+        _log.info("catalogue upgraded", was=have, now=len(STEPS))
 
 
 def stored(path):

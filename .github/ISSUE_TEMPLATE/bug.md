@@ -11,7 +11,7 @@ labels: bug
 
 
 **Setup**
-- Lift and Coast version (the release you installed, or what `git describe --tags` prints):
+- Lift and Coast version (on the Diagnostics tab, or `uv run python -m engineer.server --version`):
 - Game and version (F1 24 / F1 25, 2026 Season Pack?):
 - Platform the game runs on:
 - UDP format in the game's settings:
