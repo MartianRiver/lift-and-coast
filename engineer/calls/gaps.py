@@ -1,6 +1,7 @@
 """Calls about the cars either side: within a second, closing or being caught, the last lap."""
 import math
 
+from .. import calc
 from .common import NORMAL, LOW, call, nice, stopping
 
 CLOSING = 0.25   # s/lap worth a call
@@ -16,7 +17,7 @@ def in_range(b, mem):
     if b.s["safetyCarStatus"] or b.my["currentLapNum"] < 2 or stopping(b):
         return []
     said, out = mem.setdefault("range", set()), []
-    said |= {e["idx"] for e in b.st.incidents.log if e["kind"] in ("passed", "lost") and b.now - e["t"] < JUST_PASSED}
+    swapped = {e["idx"] for e in b.st.incidents.log if e["kind"] in ("passed", "lost") and b.now - e["t"] < JUST_PASSED}
     for step in (-1, +1):
         idx = _live_neighbour(b, step)
         gap = idx is not None and _live_gap(b, idx, step)
@@ -24,7 +25,7 @@ def in_range(b, mem):
             continue
         if gap > REARM:
             said.discard(idx)
-        elif gap <= IN_RANGE and idx not in said:
+        elif gap <= IN_RANGE and idx not in said | swapped:
             said.add(idx)
             out.append(call(("range", idx, b.my["currentLapNum"]), "gap", NORMAL,
                             lambda b, i=idx, s=step: _range_words(b, i, s), ttl=20))
@@ -37,12 +38,13 @@ def _live_neighbour(b, step):
 
 
 def _live_gap(b, idx, step):
-    """Seconds between me and the car `step` places away, as the game times it now; None in the pit lane."""
-    back = b.lap_pkt["lapData"][b.me if step < 0 else idx]
-    if b.lap_pkt["lapData"][idx]["pitStatus"]:
-        return None
-    ms = back["deltaToCarInFrontMinutesPart"] * 60000 + back["deltaToCarInFrontMSPart"]
-    return ms / 1000 if ms else None  # 0 for a moment after a change of places
+    """Seconds between me and the car `step` places away, from both cars' live time to the leader;
+    None in the pit lane. Not the game's gap to the car in front: after a pass it keeps the old car's
+    gap until the next timing point, while the positions have already changed."""
+    cars = b.lap_pkt["lapData"]
+    theirs, mine = calc.to_leader(cars, idx), calc.to_leader(cars, b.me)
+    gap = theirs is not None and mine is not None and (theirs - mine) * step
+    return gap if gap and gap > 0 else None
 
 
 def _range_words(b, idx, step):
@@ -94,7 +96,7 @@ def rival(b, idx, left):
     who = nice(b.name(idx))
     eta = math.ceil((gap - IN_RANGE) / closing)
     if eta <= left:
-        kind, tail = "catch", f"Within a second in about {eta} laps."
+        kind, tail = "catch", "Within a second next lap." if eta == 1 else f"Within a second in about {eta} laps."
     elif closing >= FLAG_CLOSING and left <= FLAG_LAPS:
         kind, tail = "flag", f"About {gap - closing * left:.1f} at the flag."
     else:

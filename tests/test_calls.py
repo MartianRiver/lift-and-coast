@@ -35,6 +35,7 @@ class Rival(unittest.TestCase):
         kind, words = self.text(gap=3.3, trend=-1.8, last=-1.8)
         self.assertEqual(kind, "catch")
         self.assertIn("Within a second in about 2 laps", words)
+        self.assertIn("Within a second next lap.", self.text(gap=1.3, trend=-0.4, last=-0.4)[1])
 
     def test_within_a_second_is_left_to_the_live_gap(self):
         self.assertIsNone(self.text(gap=0.8, trend=-0.4, last=-0.4))
@@ -49,8 +50,11 @@ class InRange(unittest.TestCase):
         self.cars = self.b.lap_pkt["lapData"]
         self.ahead = next(i for i in self.b.active() if self.cars[i]["carPosition"] == self.b.my["carPosition"] - 1)
 
-    def gap(self, ms):
-        self.cars[self.b.me].update(deltaToCarInFrontMinutesPart=0, deltaToCarInFrontMSPart=ms)
+    def gap(self, ms, car=None):
+        """Sets the live gap to the car ahead (or `car` behind) through both cars' time to the leader."""
+        behind, ahead = (car, self.b.me) if car is not None else (self.b.me, self.ahead)
+        self.cars[ahead].update(deltaToRaceLeaderMinutesPart=0, deltaToRaceLeaderMSPart=10000)
+        self.cars[behind].update(deltaToRaceLeaderMinutesPart=0, deltaToRaceLeaderMSPart=10000 + ms)
         return gaps.in_range(self.b, self.mem)
 
     def test_once_until_he_drops_back(self):
@@ -68,17 +72,22 @@ class InRange(unittest.TestCase):
         self.assertIsNone(c["text"](self.b))
 
 
+    def test_not_from_the_game_gap_to_the_old_car_ahead_after_a_pass(self):
+        me = self.cars[self.b.me]
+        self.assertEqual(self.gap(-300), [])  # the times not yet in the new order
+        self.gap(2900)
+        me.update(deltaToCarInFrontMinutesPart=0, deltaToCarInFrontMSPart=50)  # still the car he just passed
+        self.assertEqual(gaps.in_range(self.b, self.mem), [])
+
     def test_not_for_a_car_that_has_just_swapped_places_with_him(self):
         self.b.st.incidents.log.append({"t": self.b.now - 5, "lap": 3, "kind": "lost", "idx": self.ahead})
         self.assertEqual(self.gap(900), [])
-        self.gap(2600)  # drops back, then catches him again: worth it now
-        self.b.lap_pkt["header"]["sessionTime"] += gaps.JUST_PASSED
+        self.b.lap_pkt["header"]["sessionTime"] += gaps.JUST_PASSED  # still on him half a minute later: worth it now
         self.assertEqual(len(self.gap(900)), 1)
 
     def test_drs_range_only_when_the_race_has_drs(self):
         behind = next(i for i in self.b.active() if self.cars[i]["carPosition"] == self.b.my["carPosition"] + 1)
-        self.cars[behind].update(deltaToCarInFrontMinutesPart=0, deltaToCarInFrontMSPart=800)
-        (c,) = [c for c in gaps.in_range(self.b, self.mem) if c["key"][1] == behind]
+        (c,) = [c for c in self.gap(800, car=behind) if c["key"][1] == behind]
         who = common.nice(self.b.name(behind))
         self.assertEqual(c["text"](self.b), f"{who} is within a second.")  # no DRSE yet: wet, or lap 1
         self.r.event(self.b.now + 1, "DRSE")

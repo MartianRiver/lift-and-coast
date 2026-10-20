@@ -161,7 +161,7 @@ def gaps(laps, me, cars, window=3, live=None):
         if a["pit"] or b["pit"]:
             continue  # crossed in the pit lane: that line time is from before the stop, so the gap would be stale
         line = b["t"] - a["t"]
-        theirs, mine_now = (_to_leader(live, idx), _to_leader(live, me)) if live else (None, None)
+        theirs, mine_now = (to_leader(live, idx), to_leader(live, me)) if live else (None, None)
         now = theirs - mine_now if theirs is not None and mine_now is not None else line
         g = {"gap": now, "trend": None, "trendLaps": None, "last": None}
         for k in range(window, 0, -1):
@@ -175,7 +175,7 @@ def gaps(laps, me, cars, window=3, live=None):
     return out
 
 
-def _to_leader(live, idx):
+def to_leader(live, idx):
     """Seconds behind the leader as the game times it, or None where it doesn't: 0 in the pit lane."""
     c = live[idx]
     secs = c["deltaToRaceLeaderMinutesPart"] * 60 + c["deltaToRaceLeaderMSPart"] / 1000
