@@ -44,7 +44,8 @@ class InRange(unittest.TestCase):
     """Said from the game's live gap the moment it drops under a second, not at the next line."""
 
     def setUp(self):
-        self.b, self.mem = Race(raced(4).st), {}
+        self.r = raced(4)
+        self.b, self.mem = Race(self.r.st), {}
         self.cars = self.b.lap_pkt["lapData"]
         self.ahead = next(i for i in self.b.active() if self.cars[i]["carPosition"] == self.b.my["carPosition"] - 1)
 
@@ -65,6 +66,25 @@ class InRange(unittest.TestCase):
         me, them = self.cars[self.b.me], self.cars[self.ahead]
         me["carPosition"], them["carPosition"] = them["carPosition"], me["carPosition"]
         self.assertIsNone(c["text"](self.b))
+
+
+    def test_not_for_a_car_that_has_just_swapped_places_with_him(self):
+        self.b.st.incidents.log.append({"t": self.b.now - 5, "lap": 3, "kind": "lost", "idx": self.ahead})
+        self.assertEqual(self.gap(900), [])
+        self.gap(2600)  # drops back, then catches him again: worth it now
+        self.b.lap_pkt["header"]["sessionTime"] += gaps.JUST_PASSED
+        self.assertEqual(len(self.gap(900)), 1)
+
+    def test_drs_range_only_when_the_race_has_drs(self):
+        behind = next(i for i in self.b.active() if self.cars[i]["carPosition"] == self.b.my["carPosition"] + 1)
+        self.cars[behind].update(deltaToCarInFrontMinutesPart=0, deltaToCarInFrontMSPart=800)
+        (c,) = [c for c in gaps.in_range(self.b, self.mem) if c["key"][1] == behind]
+        who = common.nice(self.b.name(behind))
+        self.assertEqual(c["text"](self.b), f"{who} is within a second.")  # no DRSE yet: wet, or lap 1
+        self.r.event(self.b.now + 1, "DRSE")
+        self.assertEqual(c["text"](self.b), f"{who} is within a second, in DRS range.")
+        self.r.event(self.b.now + 2, "DRSD", bytes([0]))
+        self.assertEqual(c["text"](self.b), f"{who} is within a second.")
 
 
 class Settling(unittest.TestCase):

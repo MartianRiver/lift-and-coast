@@ -147,7 +147,7 @@ class Engineer:
         given = data + "\n" + msg["text"]
 
         def say(sentence):
-            wrong = numbers.unsupported(sentence, given)
+            wrong = numbers.unsupported(sentence, given, msg["text"])
             if wrong:
                 held.append({"text": sentence, "numbers": wrong})
                 _log.warn("number not in the brief, not said", sentence=sentence, numbers=wrong)

@@ -11,8 +11,11 @@ covers that case, and the team reviews the call straight after. Otherwise a stra
 gets "copy, checking" and the team's answer.
 
 A call I make myself is the plan from then on. "Mediums on nine." gets "Copy, Mediums end of nine",
-and the team rewrites the plans around it straight away. Either of them pushes back only with the
-number that says it can't work, like a tyre worn out before that lap. At Las Vegas the engineer
+and the team rewrites the plans around it straight away. It stays in front of the team in every run
+after that, until I've stopped or made another call. Either of them pushes back only with the
+number that says it can't work, like a tyre worn out before that lap. At Losail a later run swapped
+my Inters for Wets on the forecast alone, while its own figures had the Inter two seconds a lap
+quicker. At Las Vegas the engineer
 answered that one with "Negative, box end of lap 8 for the Hard, that's the plan". The team had
 kept the Hard because it was the plan, while the brief's stop line said the Medium was 0.47 s a
 lap quicker and still made the flag. Now a plan has to give a number to stay when the stop line

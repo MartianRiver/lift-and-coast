@@ -179,6 +179,24 @@ class Questions(unittest.TestCase):
         self.assertIn('"Mediums on nine."', r["text"])
         self.assertIn('"Copy, Mediums end of nine."', r["text"])
 
+    def test_his_call_stands_in_later_runs_until_he_stops(self):
+        w = _wall(self.st)
+        w.called("Inters on 11.", "Copy, box end of lap 11 for new Inters.")
+        stops = self.st.latest[2]["lapData"][self.st.latest[2]["header"]["playerCarIndex"]]["numPitStops"]
+        sent = []
+
+        def stream(model, messages, on_text, **kw):
+            sent.append(messages[-1]["content"])
+            on_text("CALL: No change\nSAY: nothing\nWHY: x")
+            return {"firstMs": 1}
+        with mock.patch.object(wall_mod, "stream", stream):
+            w.run([triggers.reason(("tyres",), "rear-left reaches 70% in 5 laps")], 10, 600.0, stops, wait=True)
+            w.run([triggers.reason(("stopped",), "he has just stopped")], 12, 700.0, stops + 1, wait=True)
+        first, second = [m for m in sent if "WHY YOU'RE CALLED NOW" in m]  # the lead's runs, not the reviews
+        self.assertIn("RIVER'S OWN CALL", first)
+        self.assertIn('"Inters on 11."', first)
+        self.assertNotIn("RIVER'S OWN CALL", second)  # he's stopped: done with
+
     def test_no_time_to_ask_near_the_box(self):
         w = _wall(self.st)
         with mock.patch.object(wall_mod, "PIT_ENTRY", 0.0):
@@ -201,7 +219,7 @@ class Questions(unittest.TestCase):
             self.assertEqual(w.command("Tell the team this one's damage control, few rewinds"), "Copy, I'll pass it on.")
             self.assertEqual(notes.read_brief()["text"], "this one's damage control, few rewinds")
             self.assertTrue(any(r["key"][0] == "brief" for r in w.pending))
-            self.assertIn("damage control", w._input("BRIEF", [], 5))
+            self.assertIn("damage control", w._input("BRIEF", [], 5, 0))
             self.assertIsNone(w.command("what did you tell the team?"))
 
     def test_go_plan_b(self):

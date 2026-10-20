@@ -112,7 +112,9 @@ def dry_stop(b):
 
 def stint_rates(b):
     """Your %/lap per wheel on the set you're on now (None until it has two laps)."""
-    return calc.wear_rates(b.st.laps.cars.get(b.me, []), stops=b.my["numPitStops"])
+    status = b.status()
+    fitted = status and (status["visualTyreCompound"], status["tyresAgeLaps"])
+    return calc.wear_rates(b.st.laps.cars.get(b.me, []), stops=b.my["numPitStops"], fitted=fitted)
 
 
 def fresh_gain(b):

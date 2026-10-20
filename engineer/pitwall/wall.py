@@ -28,6 +28,8 @@ PIT_ENTRY = 0.85       # share of the lap after which a "box?" can't wait for th
 PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 LEAD, REVIEW, PREP = ((PROMPTS / f"{name}.md").read_text() for name in ("pitwall", "pitwall-review", "pitwall-prep"))
 BRIEF = "RIVER'S BRIEF FOR THIS RACE"
+HIS_CALL = ("RIVER'S OWN CALL (it stands until he stops or makes another: plan A follows it. To change it, push back in SAY "
+            "with the number that shows it can't work, never switch it quietly)")
 
 STRATEGY = re.compile(r"\b(box|boxing|pit|pitting|stop now|stopping|a stop|another stop|one[- ]stop|two[- ]stop|"
                       r"when do i stop|undercut|overcut|strategy|plan|stay out|extend|stretch|inters|intermediates|"
@@ -59,6 +61,7 @@ class PitWall:
         self._uid, self.mem, self.pending, self._since = uid, {}, [], None
         self.notes, self.plans, self.active, self.box, self._box_stops = [], {}, None, None, None
         self.spent, self.running, self._last = 0.0, None, None  # _last: (session time, lap) of the last run
+        self.his_call = None  # {text, lap, stops}: the last call the driver made himself
         if uid and self.persist:
             for n in notes.load(str(uid)):
                 self._apply(n, publish=False)
@@ -167,7 +170,10 @@ class PitWall:
                                    + driver.words("the engineer told him") + f' "{answer}". Review it')])
 
     def called(self, text, answer):
-        """The driver made the call: the team plans around it at once."""
+        """The driver made the call: the team plans around it at once, and every run after until he stops."""
+        with self.state.lock:
+            my = ready(self.state) and Race(self.state).my
+            self.his_call = my and {"text": text, "lap": my["currentLapNum"], "stops": my["numPitStops"]}
         self._add([triggers.reason(("called", time.time()), driver.words("River made the call himself: ") + f'"{text}"; '
                                    + driver.words("the engineer told him") + f' "{answer}". '
                                    + driver.words("His call is the plan now: rewrite the plans around it"), urgent=True)])
@@ -256,7 +262,7 @@ class PitWall:
                 "question": question}
         self.running = note
         self.hub.publish("pitwall", {"running": note})
-        messages = [{"role": "system", "content": driver.words(LEAD)}, {"role": "user", "content": self._input(data, reasons, lap)}]
+        messages = [{"role": "system", "content": driver.words(LEAD)}, {"role": "user", "content": self._input(data, reasons, lap, stops)}]
         _log.info("team run", reasons=note["reasons"], model=self.models[0])
         out = []
         try:
@@ -310,11 +316,14 @@ class PitWall:
             if self.persist and self._uid:
                 notes.save(str(self._uid), note)
 
-    def _input(self, data, reasons, lap):
+    def _input(self, data, reasons, lap, stops):
         parts = [data, "", *notes.section(self, *self._where())]
         told = notes.read_brief()
         if told:
             parts += [driver.words(BRIEF + " (how he wants to race it: plan around it)"), f"  {told['text']}"]
+        call = self.his_call
+        if call and call["stops"] == stops:
+            parts += [driver.words(HIS_CALL), f'  L{call["lap"]}: "{call["text"]}"']
         mine = notes.history(self)
         if mine:
             parts += ["YOUR TEAM'S RECENT NOTES", *mine]

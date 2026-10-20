@@ -50,6 +50,14 @@ class Unsupported(unittest.TestCase):
         self.assertEqual(unsupported("Plus 1.4 laps.", FIELD), ["1.4"])
         self.assertEqual(unsupported("He's 6.3 behind.", FIELD), ["6.3"])
 
+    def test_a_figure_he_said_himself_can_be_said_back(self):
+        self.assertEqual(unsupported("Copy, box end of lap 11 for new Inters.", WEAR, "Inters on 11."), [])
+        self.assertEqual(unsupported("Copy, Mediums end of lap 9.", WEAR, "Mediums on nine."), [])
+        self.assertEqual(unsupported("Copy, box end of lap 12 for new Inters.", WEAR, "Inters on 11."), ["12"])
+        self.assertEqual(unsupported("P1, box lap 1.", WEAR, "Is this the one?"), ["1", "1"])
+        self.assertEqual(unsupported("Copy, boxing in two laps.", WEAR, "Box in two laps."), [])
+        self.assertEqual(unsupported("Copy, boxing in two laps.", WEAR), ["two laps"])
+
     def test_a_spelled_out_count_is_checked_when_it_has_a_unit(self):
         self.assertEqual(unsupported("Worn out in six laps.", WEAR), [])
         self.assertEqual(unsupported("Worn out in eleven laps.", WEAR), ["eleven laps"])

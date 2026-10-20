@@ -6,6 +6,7 @@ from .common import NORMAL, LOW, call, nice, stopping
 CLOSING = 0.25   # s/lap worth a call
 IN_RANGE = 1.0   # DRS distance, s
 REARM = 2.5      # s apart before the same car is worth another within-a-second call
+JUST_PASSED = 30  # s after a pass either way: of course he's within a second
 FLAG_CLOSING, FLAG_LAPS = 0.4, 8  # a closing car is worth a flag projection this near the end
 
 
@@ -15,6 +16,7 @@ def in_range(b, mem):
     if b.s["safetyCarStatus"] or b.my["currentLapNum"] < 2 or stopping(b):
         return []
     said, out = mem.setdefault("range", set()), []
+    said |= {e["idx"] for e in b.st.incidents.log if e["kind"] in ("passed", "lost") and b.now - e["t"] < JUST_PASSED}
     for step in (-1, +1):
         idx = _live_neighbour(b, step)
         gap = idx is not None and _live_gap(b, idx, step)
@@ -47,7 +49,9 @@ def _range_words(b, idx, step):
     if _live_neighbour(b, step) != idx or (_live_gap(b, idx, step) or 99) > IN_RANGE + 0.2:
         return None  # passed, or dropped back, while the call waited for a straight
     who = nice(b.name(idx))
-    return f"{who} is within a second, in DRS range." if step > 0 else f"You're within a second of {who}."
+    if step < 0:
+        return f"You're within a second of {who}."
+    return f"{who} is within a second, in DRS range." if b.st.drs else f"{who} is within a second."
 
 
 def at_the_line(b, mem, lap):

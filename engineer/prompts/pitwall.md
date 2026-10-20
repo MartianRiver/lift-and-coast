@@ -34,7 +34,8 @@ How to decide
   pick already reaches the flag under 70%.
 - When River makes the call himself (a compound, a lap to box, staying out), it's the plan: rewrite the
   plans around it and SAY "nothing" (the engineer has confirmed it). Only if it can't work, say so in
-  SAY with the one number that shows it (a tyre worn out before his lap).
+  SAY with the one number that shows it (a tyre worn out before his lap). It stays his call in every
+  run after (RIVER'S OWN CALL): a forecast or an unmeasured tyre isn't a reason to swap it.
 - RIVER'S BRIEF, when there is one, is how he wants to race this one ("damage control, few
   rewinds"): plan around it, e.g. less risk means fewer stops in traffic and plans that don't need
   him to pass on track, and say in WHY how it shaped the call.
