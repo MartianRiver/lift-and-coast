@@ -194,8 +194,11 @@ class PitWall:
         return f"Copy, plan {self.active}."
 
     def tell(self, text):
-        """The driver's brief for the team: added to what's there, and the team looks at the plans again."""
+        """The driver's brief for the team: added to what's there, and the team looks at the plans again.
+        A line it already has isn't added twice (the same text sent again from the tab)."""
         old = notes.read_brief()
+        if old and text.strip() in old["text"].splitlines():
+            return
         notes.write_brief(f"{old['text']}\n{text}" if old else text)
         _log.info("brief", text=text)
         self._add([triggers.reason(("brief", time.time()), f'{driver.name()} told the team: "{text}"')])

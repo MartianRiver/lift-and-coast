@@ -221,6 +221,12 @@ class Questions(unittest.TestCase):
             self.assertTrue(any(r["key"][0] == "brief" for r in w.pending))
             self.assertIn("damage control", w._input("BRIEF", [], 5, 0))
             self.assertIsNone(w.command("what did you tell the team?"))
+            w.pending.clear()
+            w.tell("this one's damage control, few rewinds")  # sent again from the tab
+            self.assertEqual(notes.read_brief()["text"], "this one's damage control, few rewinds")
+            self.assertEqual(w.pending, [])
+            w.tell("no risks at the start")
+            self.assertEqual(notes.read_brief()["text"], "this one's damage control, few rewinds\nno risks at the start")
 
     def test_go_plan_b(self):
         w = _wall(self.st)
@@ -254,6 +260,16 @@ class Prep(unittest.TestCase):
             text = "\n".join(prep._tyres(None, {"sets": quali, "type_id": 9}, {"laps": 19, "grid": 4}))
         self.assertIn("Soft new: +0.00 s/lap, life 9", text)
         self.assertIn("Hard new: +0.96 s/lap, life 16", text)
+
+    def test_two_sets_with_the_same_name_are_one_option(self):
+        from engineer.pitwall import prep
+        # Losail race 2: two Soft 7% used sets the game rated 0.01 s/lap apart made every Soft option twice
+        sets = [{"compound": 16, "wear": 7, "life": 12, "delta": 10}, {"compound": 16, "wear": 7, "life": 12, "delta": 0},
+                {"compound": 17, "wear": 0, "life": 16, "delta": 470}]
+        soft, medium = prep._sets(sets, [{"compound": 16, "ratio": 0.9, "wet": False}])
+        self.assertEqual((soft["name"], soft["n"], soft["delta"]), ("Soft 7% used", 2, 0))
+        text = "\n".join(prep._options([soft, medium], {"laps": 19}))
+        self.assertEqual(text.count("Soft 7% used → Medium new"), 1)
 
     def test_practice_lives_are_already_the_races_and_a_sprint_gets_no_hard(self):
         from engineer.pitwall import prep

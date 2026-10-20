@@ -81,13 +81,12 @@ def dry_stop(b):
 
     The wear is your fastest-wearing tyre's rate this stint, scaled by each compound's life against the
     fitted one's. The sets' own lifeSpan runs on well past WORN at the player's wear; it's the fallback."""
-    status, sets, hist = b.status(), b.st.tyre_sets.get(b.me), b.st.history.get(b.me)
+    status, sets = b.status(), b.st.tyre_sets.get(b.me)
     if not b.race or not status or status["visualTyreCompound"] not in calc.DRY or not sets or b.my["pitStatus"]:
         return None
     left = b.s["totalLaps"] - b.my["currentLapNum"]
-    run = {t["tyreVisualCompound"] for t in hist["tyreStintsHistoryData"][:hist["numTyreStints"]]} if hist else set()
-    run.add(status["visualTyreCompound"])
-    owed = not b.sprint() and len(run) < 2  # a stint on inters or wets counts too
+    run = compounds_run(b)
+    owed = stop_owed(b)
     flag = wear_at(b, b.s["totalLaps"])
     if left < 1 or not (owed or flag and flag[1] > WORN):
         return None
@@ -108,6 +107,19 @@ def dry_stop(b):
     pick = next((o for o in options if o["lasts"]), None)
     return {"options": options, "pick": pick, "left": left, "owed": owed, "run": run,
             "wheel": flag and flag[0]} if options else None
+
+
+def compounds_run(b):
+    """Every compound raced on so far, the fitted one included."""
+    status, hist = b.status(), b.st.history.get(b.me)
+    run = {t["tyreVisualCompound"] for t in hist["tyreStintsHistoryData"][:hist["numTyreStints"]]} if hist else set()
+    return run | {status["visualTyreCompound"]} if status else run
+
+
+def stop_owed(b):
+    """A main race run on one dry compound so far: the second is still owed. Inters or wets lift the rule."""
+    run = compounds_run(b)
+    return bool(b.race and not b.sprint() and run and run <= calc.DRY and len(run) < 2)
 
 
 def stint_rates(b):

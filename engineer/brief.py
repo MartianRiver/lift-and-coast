@@ -51,6 +51,7 @@ class Brief:
         where = f"{kind} · {L.name(L.TRACKS, s['trackId'])}"
         if self.race:
             where += f" · lap {self.my['currentLapNum']} of {s['totalLaps']}"
+            where += " · you've taken the chequered flag: the race is over" if self.my["resultStatus"] == 3 else ""
         else:
             where += f" · {clock(s['sessionTimeLeft'])} left"
         sc = L.name(L.SAFETY_CAR, s["safetyCarStatus"])
@@ -155,7 +156,8 @@ class Brief:
         me, st = self.me, self.st
         status = self.r.status(me)
         dmg = self.r.damage(me)
-        head = f"YOU      P{self.r.pos(me)} · {self.r.name(me)} ({self.r.team(me)})"
+        grid = self.race and self.my["gridPosition"]
+        head = f"YOU      P{self.r.pos(me)}{f' (started P{grid})' if grid else ''} · {self.r.name(me)} ({self.r.team(me)})"
         if status:
             head += (f" · {tyre(status['visualTyreCompound'])} "
                      f"({L.name(L.ACTUAL_COMPOUNDS, status['actualTyreCompound'])}), "
@@ -233,11 +235,22 @@ class Brief:
         best = hist["bestLapTimeLapNum"]
         if best:
             line += f" · best {laptime(hist['lapHistoryData'][best - 1]['lapTimeInMS'])} (L{best})"
+        if self.race:
+            line += self._fastest()
         out = [line]
         sectors = calc.sector_deltas(hist)
         if sectors:
             out.append("  sector last lap vs your best: " + " ".join(f"S{i + 1} {d:+.3f}" for i, d in enumerate(sectors)))
         return out
+
+    def _fastest(self):
+        """The race's fastest lap so far: nothing else here has the others' best laps."""
+        laps = [(ms, i) for i in self.r.active() + self.r.retired() if (ms := calc.best_ms(self.st.history.get(i)))]
+        if not laps:
+            return ""
+        ms, idx = min(laps)
+        who = "yours" if idx == self.me else self.r.name(idx)
+        return f" · fastest lap of the race {laptime(ms)} ({who}, L{self.st.history[idx]['bestLapTimeLapNum']})"
 
     def _fuel_ers(self, status):
         # fuelRemainingLaps is the MFD's fuel delta: laps of fuel over (+) or under (−) what's needed

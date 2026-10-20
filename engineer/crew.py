@@ -75,15 +75,17 @@ def assemble(hub, state, model=DEFAULT_MODEL, engineer=True, mic=True, radio_mod
             eng.commands.append(caller.command)
     if wall:
         _staff(wall, eng, caller, radio)
-    radio.on_quick.append(lambda: _quick(state, hub, eng, speaker, live))
+    radio.on_quick.append(lambda: _quick(state, hub, eng, speaker, live, caller))
     return Crew(eng, radio, speaker, caller, wall)
 
 
-def _quick(state, hub, eng, speaker, live):
+def _quick(state, hub, eng, speaker, live, caller):
     """The second button: the quick brief, said now whatever the session."""
     out = quick.brief(state)
     if not out:
         return
+    if caller:
+        caller.quick_said(out["text"])
     out.update(id=f"q{time.time_ns()}", at=time.time())
     hub.publish("call", out)
     if live:

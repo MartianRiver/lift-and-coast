@@ -182,7 +182,8 @@ def race_sets(raw, kind, sprint=False):
 
 
 def _sets(raw, stints):
-    """The player's sets, identical ones grouped, each with its life at their rate (that compound's, else all dry or wet)."""
+    """The player's sets, ones with the same name grouped, each with its life at their rate (that compound's, else all
+    dry or wet). The game's estimate can differ by 0.01 s/lap between two identical used sets: the group takes the best."""
     def ratio(c):
         mine = [s["ratio"] for s in stints if s["compound"] == c]
         kind = [s["ratio"] for s in stints if s["wet"] == (c in profile.WET)]
@@ -190,10 +191,11 @@ def _sets(raw, stints):
 
     same = {}
     for s in raw:
-        same.setdefault((s["compound"], s["wear"], s["life"], s["delta"]), []).append(s)
+        same.setdefault((s["compound"], s["wear"]), []).append(s)
     out = []
-    for (c, worn, life, delta), group in same.items():
-        r = ratio(c)
+    for (c, worn), group in same.items():
+        best = min(group, key=lambda s: s["delta"])
+        r, life, delta = ratio(c), best["life"], best["delta"]
         out.append({"compound": profile.compound(c), "wet": c in profile.WET, "name": f"{profile.compound(c)} "
                     + ("new" if not worn else f"{worn}% used"), "n": len(group), "life": life, "delta": delta / 1000,
                     "mine": life * r if r else None})

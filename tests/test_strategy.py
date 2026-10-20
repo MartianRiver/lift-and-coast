@@ -61,21 +61,26 @@ class Measured(unittest.TestCase):
         self.assertEqual((n, slick, wet, nd, nw), (7, 117.0, 123.0, 2, 1))
 
 
-def stop_at(sets, rate=4.5, lap=13, total=25, run=(), weekend=(15,), kind=15, rr=50.0, pit=0):
-    """Brazil L13: 11 laps on a Medium (usable life 21), RR 50% at `rate` %/lap, no stop yet."""
+def stop_at(sets, rate=4.5, **kw):
+    with mock.patch.object(calc, "wear_rates", return_value=rate and [1.0, rate, 1.0, 1.0]):
+        return strategy.dry_stop(brazil(sets, **kw))
+
+
+def brazil(sets=(), lap=13, total=25, run=(), weekend=(15,), kind=15, rr=50.0, pit=0, fitted=MEDIUM):
+    """Brazil L13: 11 laps on a Medium (usable life 21), RR 50%, no stop yet."""
     data = [{"visualTyreCompound": MEDIUM, "available": 1, "lapDeltaTime": 0, "lifeSpan": 8, "usableLife": 21, "wear": 42}]
     data += [{"visualTyreCompound": c, "available": 1, "lapDeltaTime": d, "lifeSpan": life, "usableLife": usable, "wear": w}
              for c, d, life, usable, w in sets]
-    hist = {"numTyreStints": len(run) + 1, "tyreStintsHistoryData": [{"tyreVisualCompound": c} for c in (*run, MEDIUM)]}
+    hist = {"numTyreStints": len(run) + 1, "tyreStintsHistoryData": [{"tyreVisualCompound": c} for c in (*run, fitted)]}
     st = SimpleNamespace(tyre_sets={0: {"tyreSetData": data, "fittedIdx": 0}}, history={0: hist},
                          laps=SimpleNamespace(cars={0: []}))
     s = {"totalLaps": total, "sessionType": kind, "weekendStructure": list(weekend), "numSessionsInWeekend": len(weekend)}
     b = SimpleNamespace(st=st, s=s, me=0, race=True, my={"currentLapNum": lap, "pitStatus": pit, "numPitStops": 0},
-                        status=lambda idx=0: {"visualTyreCompound": MEDIUM, "tyresAgeLaps": 3},
+                        status=lambda idx=0: {"visualTyreCompound": fitted, "tyresAgeLaps": 3},
                         damage=lambda: {"tyresWear": [20, rr, 20, 20]})
     b.sprint = lambda: race.Race.sprint(b)
-    with mock.patch.object(calc, "wear_rates", return_value=rate and [1.0, rate, 1.0, 1.0]):
-        return strategy.dry_stop(b)
+    b.laps_left = lambda: total - lap
+    return b
 
 
 BRAZIL = [(SOFT, -2169, 15, 17, 5), (SOFT, -1701, 14, 17, 11), (MEDIUM, -1794, 21, 21, 0), (HARD, -1224, 26, 26, 0)]
@@ -107,6 +112,13 @@ class DryStop(unittest.TestCase):
         self.assertIsNone(stop_at(BRAZIL, weekend=weekend, rr=20.0, rate=2.0))
         self.assertFalse(stop_at(BRAZIL, weekend=weekend)["owed"])
         self.assertTrue(stop_at(BRAZIL, weekend=weekend, kind=16)["owed"])  # the main race does
+
+    def test_a_second_compound_owed_only_in_a_dry_main_race(self):
+        self.assertTrue(strategy.stop_owed(brazil()))
+        self.assertFalse(strategy.stop_owed(brazil(run=(SOFT,))))
+        self.assertFalse(strategy.stop_owed(brazil(run=(INTER,))))
+        self.assertFalse(strategy.stop_owed(brazil(fitted=INTER)))  # inters all race
+        self.assertFalse(strategy.stop_owed(brazil(weekend=(10, 15, 5, 16))))  # the sprint
 
     def test_no_wear_rate_falls_back_on_the_sets_life(self):
         p = stop_at(BRAZIL, rate=None)

@@ -8,7 +8,7 @@ export function lapTime(ms) {
   const s = ((ms % 60000) / 1000).toFixed(3).padStart(6, '0');
   return m ? `${m}:${s}` : (ms / 1000).toFixed(3);
 }
-const gap = (ms) => (ms ? `+${(ms / 1000).toFixed(3)}` : '<span class="muted">–</span>');
+const gap = (ms) => (ms ? `${ms > 0 ? '+' : ''}${(ms / 1000).toFixed(3)}` : '<span class="muted">–</span>');  // below 0: ahead on timing, place not changed yet
 const n = (v, d = 1) => (v == null ? '–' : Number(v).toFixed(d));
 const pct = (v) => (v == null ? '–' : `${Math.round(v)}%`);
 const MJ = (j) => (j == null ? '–' : (j / 1e6).toFixed(2));
