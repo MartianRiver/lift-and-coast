@@ -60,7 +60,7 @@ def _me(b):
 
 
 def _tyres(b, dmg):
-    rates = calc.wear_rates(b.st.laps.cars.get(b.me, []))
+    rates = strategy.stint_rates(b)
     worn = strategy.worn_in(b)
     return {"corners": [WHEELS[i] for i in FRONT_TO_BACK],
             "wear": [dmg["tyresWear"][i] for i in FRONT_TO_BACK],

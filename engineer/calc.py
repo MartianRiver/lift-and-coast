@@ -32,19 +32,25 @@ def lap_at(my, session, minutes, ref_ms):
     return int(done + minutes * 60000 / ref_ms) + 1
 
 
-def stint(crossings):
-    """Trailing crossings on the current set: same stop count and compound, with wear recorded."""
+def stint(crossings, stops=None, fitted=None):
+    """Trailing crossings on the current set: same stop count and compound, with wear recorded. With
+    `stops` (the car's stop count now): none if it has stopped since the last crossing. With `fitted`
+    ((visual compound, age) now): none if the set changed without a stop, as in the practice garage."""
     out = []
     for x in reversed(crossings):
         if "wear" not in x or (out and (x["stops"] != out[0]["stops"] or x.get("tyre") != out[0].get("tyre"))):
             break
         out.insert(0, x)
+    if out and stops is not None and out[-1]["stops"] != stops:
+        return []  # the last crossings are the old set's
+    if out and fitted and (out[-1].get("tyre") != fitted[0] or out[-1].get("age", 0) > fitted[1]):
+        return []
     return out
 
 
-def wear_rates(crossings, window=5):
+def wear_rates(crossings, window=5, stops=None, fitted=None):
     """%/lap per wheel over the last `window` laps of this stint, or None with < 2 laps of data."""
-    xs = stint(crossings)[-(window + 1):]
+    xs = stint(crossings, stops, fitted)[-(window + 1):]
     if len(xs) < 2 or xs[-1]["lap"] == xs[0]["lap"]:
         return None
     n = xs[-1]["lap"] - xs[0]["lap"]
@@ -155,7 +161,7 @@ def gaps(laps, me, cars, window=3, live=None):
         if a["pit"] or b["pit"]:
             continue  # crossed in the pit lane: that line time is from before the stop, so the gap would be stale
         line = b["t"] - a["t"]
-        theirs, mine_now = (_to_leader(live, idx), _to_leader(live, me)) if live else (None, None)
+        theirs, mine_now = (to_leader(live, idx), to_leader(live, me)) if live else (None, None)
         now = theirs - mine_now if theirs is not None and mine_now is not None else line
         g = {"gap": now, "trend": None, "trendLaps": None, "last": None}
         for k in range(window, 0, -1):
@@ -169,7 +175,7 @@ def gaps(laps, me, cars, window=3, live=None):
     return out
 
 
-def _to_leader(live, idx):
+def to_leader(live, idx):
     """Seconds behind the leader as the game times it, or None where it doesn't: 0 in the pit lane."""
     c = live[idx]
     secs = c["deltaToRaceLeaderMinutesPart"] * 60 + c["deltaToRaceLeaderMSPart"] / 1000

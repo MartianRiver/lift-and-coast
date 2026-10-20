@@ -10,6 +10,17 @@ direct "box or stay?" a few hundred metres from the box. Then it uses whichever 
 covers that case, and the team reviews the call straight after. Otherwise a strategy question
 gets "copy, checking" and the team's answer.
 
+A call I make myself is the plan from then on. "Mediums on nine." gets "Copy, Mediums end of nine",
+and the team rewrites the plans around it straight away. It stays in front of the team in every run
+after that, until I've stopped or made another call. Either of them pushes back only with the
+number that says it can't work, like a tyre worn out before that lap. At Losail a later run swapped
+my Inters for Wets on the forecast alone, while its own figures had the Inter two seconds a lap
+quicker. At Las Vegas the engineer
+answered that one with "Negative, box end of lap 8 for the Hard, that's the plan". The team had
+kept the Hard because it was the plan, while the brief's stop line said the Medium was 0.47 s a
+lap quicker and still made the flag. Now a plan has to give a number to stay when the stop line
+picks something else.
+
 Today some decisions are made in code and said straight away: box for slicks, the rain plan, a
 stop under the SC. Once the team exists those become triggers for a team run. The code still does
 the arithmetic, and the team owns the call.
@@ -26,7 +37,11 @@ plans below, and posts a short note. Two models disagreeing is worth seeing: if 
 says so and the engineer gets both sides in one line.
 
 The engineer's brief gets a PIT WALL section: the active plan and the last note or two, dropped
-once they're a few laps old (old answers repeated as current facts was a real problem before).
+once they're a few laps old (old answers repeated as current facts was a real problem before),
+and every call the team has made this race in one line. With what the engineer has said itself
+about tyres and stops, kept all race, that lets it explain a change of plan. At Las Vegas, asked
+why it had said Hards were better, it answered "I didn't": the Hard calls were 16 minutes back and
+it only remembered 90 seconds.
 
 ## Plans A, B, C
 

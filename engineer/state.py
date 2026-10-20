@@ -70,6 +70,7 @@ class RaceState:
         self.wear = Wear()
         self.grip = Grip()
         self.events = deque(maxlen=300)
+        self.drs = False  # off until DRSE: a wet race may never enable it
         self.button_log = deque(maxlen=30)
         self.buttons = 0
 
@@ -159,6 +160,8 @@ class RaceState:
         else:
             if code == "FLBK":
                 self.laps.flashback(data["eventDetails"]["flashbackSessionTime"])
+            elif code in ("DRSE", "DRSD"):
+                self.drs = code == "DRSE"
             self.incidents.on_event(ev, self.latest.get(2))
             self.events.append(ev)
             _log.debug("event", code=code, details=data["eventDetails"])

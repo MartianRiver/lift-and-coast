@@ -92,7 +92,7 @@ def dry_stop(b):
     if left < 1 or not (owed or flag and flag[1] > WORN):
         return None
     fitted = sets["tyreSetData"][sets["fittedIdx"]]
-    rate = flag and calc.wear_rates(b.st.laps.cars.get(b.me, []))[flag[0]]
+    rate = flag and stint_rates(b)[flag[0]]
     best = {}
     for i, s in enumerate(sets["tyreSetData"]):
         c = s["visualTyreCompound"]
@@ -110,6 +110,13 @@ def dry_stop(b):
             "wheel": flag and flag[0]} if options else None
 
 
+def stint_rates(b):
+    """Your %/lap per wheel on the set you're on now (None until it has two laps)."""
+    status = b.status()
+    fitted = status and (status["visualTyreCompound"], status["tyresAgeLaps"])
+    return calc.wear_rates(b.st.laps.cars.get(b.me, []), stops=b.my["numPitStops"], fitted=fitted)
+
+
 def fresh_gain(b):
     """(s/lap new tyres are worth, where that comes from): measured from this race's stops onto the
     same kind of tyre as yours (dry or wet) once there are two, else the tyre sets' own estimate."""
@@ -125,7 +132,7 @@ def fresh_gain(b):
 def wear_at(b, lap):
     """(wheel index, % on your fastest-wearing tyre by `lap`) at this stint's rate, or None."""
     dmg = b.damage()
-    rates = calc.wear_rates(b.st.laps.cars.get(b.me, []))
+    rates = stint_rates(b)
     if not dmg or not rates:
         return None
     w = max(range(4), key=lambda i: rates[i])
@@ -136,7 +143,7 @@ def worn_in(b):
     """(wheel, laps until your fastest-wearing tyre reaches WORN at this stint's rate) or None. Ours, not
     the set's lifeSpan: that has said "~17 laps left" with the RL heading for 75% in 8."""
     dmg = b.damage()
-    rates = calc.wear_rates(b.st.laps.cars.get(b.me, []))
+    rates = stint_rates(b)
     if not dmg or not rates:
         return None
     w = max(range(4), key=lambda i: rates[i])
@@ -147,7 +154,7 @@ def target(b, lap):
     """Your fastest-wearing tyre at the end of `lap` (the planned stop, or the flag) at this stint's rate.
     Past WORN: what saving it takes, as the extra over the field in the sectors it comes from, and how
     many laps of matching the field there get it to `lap`. None without two laps of wear."""
-    dmg, rates = b.damage(), calc.wear_rates(b.st.laps.cars.get(b.me, []))
+    dmg, rates = b.damage(), stint_rates(b)
     if not dmg or not rates:
         return None
     i = max(range(4), key=lambda k: rates[k])

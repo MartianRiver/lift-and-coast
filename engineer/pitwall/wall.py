@@ -28,11 +28,16 @@ PIT_ENTRY = 0.85       # share of the lap after which a "box?" can't wait for th
 PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 LEAD, REVIEW, PREP = ((PROMPTS / f"{name}.md").read_text() for name in ("pitwall", "pitwall-review", "pitwall-prep"))
 BRIEF = "RIVER'S BRIEF FOR THIS RACE"
+HIS_CALL = ("RIVER'S OWN CALL (it stands until he stops or makes another: plan A follows it. To change it, push back in SAY "
+            "with the number that shows it can't work, never switch it quietly)")
 
 STRATEGY = re.compile(r"\b(box|boxing|pit|pitting|stop now|stopping|a stop|another stop|one[- ]stop|two[- ]stop|"
                       r"when do i stop|undercut|overcut|strategy|plan|stay out|extend|stretch|inters|intermediates|"
                       r"wets|slicks|which tyres?|what tyres?|which compound|what compound|switch to)\b")
 TELL = re.compile(r"^(?:tell|note for|message for|let) the (?:team|pit wall|strategists?)(?: know)?[,:]?\s+(?:that\s+)?(.+)$", re.I)
+# the driver making the call himself ("Mediums on nine.", "Boxing this lap"): a statement, not a question
+CALLED = re.compile(r"\b(softs?|mediums?|hards?|inters|intermediates|wets|box|boxing|pitting|stay(?:ing)? out)\b")
+QUESTION = re.compile(r"^(?:what|when|where|which|who|why|how|should|shall|can|could|do|does|did|is|are|will|would|have|has)\b")
 SWITCH = re.compile(r"^(?:let'?s |ok,? |okay,? )?(?:go|go to|switch to|we'?re on|run|use)?\s*plan ([abc])\W*$")
 
 
@@ -56,6 +61,7 @@ class PitWall:
         self._uid, self.mem, self.pending, self._since = uid, {}, [], None
         self.notes, self.plans, self.active, self.box, self._box_stops = [], {}, None, None, None
         self.spent, self.running, self._last = 0.0, None, None  # _last: (session time, lap) of the last run
+        self.his_call = None  # {text, lap, stops}: the last call the driver made himself
         if uid and self.persist:
             for n in notes.load(str(uid)):
                 self._apply(n, publish=False)
@@ -139,8 +145,11 @@ class PitWall:
 
     def routes(self, text):
         """A strategy question: "team" (copy, checking) or "now" (no time to ask: the engineer answers
-        from the plans and the team reviews it after). None: not ours."""
-        if self.error or not STRATEGY.search(text.lower()):
+        from the plans and the team reviews it after). "called": the driver made the call himself; the
+        engineer confirms it and the team plans around it. None: not ours."""
+        low = text.lower().strip()
+        called = CALLED.search(low) and not low.endswith("?") and not QUESTION.match(low)
+        if self.error or not (called or STRATEGY.search(low)):
             return None
         with self.state.lock:
             if not ready(self.state):
@@ -149,7 +158,7 @@ class PitWall:
             if not b.race or not b.my:
                 return None
             hurry = b.s["safetyCarStatus"] in (1, 2) or b.my["pitStatus"] or b.my["lapDistance"] > PIT_ENTRY * b.s["trackLength"]
-        return "now" if hurry else "team"
+        return "called" if called else "now" if hurry else "team"
 
     def ask(self, text):
         self._add([triggers.reason(("question", time.time()), f'{driver.name()} asked: "{text}"', urgent=True, question=text)])
@@ -159,6 +168,16 @@ class PitWall:
         """The engineer answered a strategy question itself: the team looks at it next."""
         self._add([triggers.reason(("answered", time.time()), f'{driver.name()} asked "{question}" with no time to check; '
                                    + driver.words("the engineer told him") + f' "{answer}". Review it')])
+
+    def called(self, text, answer):
+        """The driver made the call: the team plans around it at once, and every run after until he stops."""
+        with self.state.lock:
+            my = ready(self.state) and Race(self.state).my
+            self.his_call = my and {"text": text, "lap": my["currentLapNum"], "stops": my["numPitStops"]}
+        self._add([triggers.reason(("called", time.time()), driver.words("River made the call himself: ") + f'"{text}"; '
+                                   + driver.words("the engineer told him") + f' "{answer}". '
+                                   + driver.words("His call is the plan now: rewrite the plans around it"), urgent=True)])
+        self._wake.set()
 
     def command(self, text):
         """"go plan B" switches plans, "tell the team ..." goes in the driver's brief; answers for the radio, else None."""
@@ -243,7 +262,7 @@ class PitWall:
                 "question": question}
         self.running = note
         self.hub.publish("pitwall", {"running": note})
-        messages = [{"role": "system", "content": driver.words(LEAD)}, {"role": "user", "content": self._input(data, reasons, lap)}]
+        messages = [{"role": "system", "content": driver.words(LEAD)}, {"role": "user", "content": self._input(data, reasons, lap, stops)}]
         _log.info("team run", reasons=note["reasons"], model=self.models[0])
         out = []
         try:
@@ -297,11 +316,14 @@ class PitWall:
             if self.persist and self._uid:
                 notes.save(str(self._uid), note)
 
-    def _input(self, data, reasons, lap):
+    def _input(self, data, reasons, lap, stops):
         parts = [data, "", *notes.section(self, *self._where())]
         told = notes.read_brief()
         if told:
             parts += [driver.words(BRIEF + " (how he wants to race it: plan around it)"), f"  {told['text']}"]
+        call = self.his_call
+        if call and call["stops"] == stops:
+            parts += [driver.words(HIS_CALL), f'  L{call["lap"]}: "{call["text"]}"']
         mine = notes.history(self)
         if mine:
             parts += ["YOUR TEAM'S RECENT NOTES", *mine]
@@ -317,7 +339,7 @@ class PitWall:
 
     def section(self):
         lap, tyres = self._where()
-        return "\n".join(notes.section(self, lap, tyres))
+        return "\n".join(notes.section(self, lap, tyres, calls=True))
 
     def _where(self):
         """(the player's lap, the tyre target line) for the PIT WALL section."""

@@ -4,7 +4,8 @@ Checked a sentence at a time, before it's spoken. Allows what an engineer does w
 radio: rounding ("1.3" from +1.31), tenths in words ("nine tenths" from 0.9), a lap time by its
 seconds ("a 16.7" for 1:16.695), metres rounded or said in km ("3000–3700", "4.9 km" from 2947–3692 m
 and 4877 m), a hedged round number ("around 20°" from 22). A figure with a unit (%, °C, P, lap, kg, km/h) has to match one with the same unit, so a
-wear figure moved on by a lap's rate isn't excused by some other 43 in the brief.
+wear figure moved on by a lap's rate isn't excused by some other 43 in the brief. A figure the driver said
+himself ("Mediums on nine", "Inters on 11") can be said back whatever its unit.
 """
 import re
 
@@ -20,22 +21,22 @@ UNITS = [("%", re.compile(r"\s*(%|percent\b)", re.I)), ("°C", re.compile(r"\s*(
          ("kg", re.compile(r"\s*kg\b", re.I)), ("km/h", re.compile(r"\s*(km/h|kph\b|k's\b)", re.I))]
 
 
-def unsupported(sentence, given):
-    """The figures in `sentence` that `given` (the brief, the question) doesn't back."""
-    pool = _pool(given)
+def unsupported(sentence, given, heard=""):
+    """The figures in `sentence` that `given` (the brief, the question) doesn't back, nor the driver in `heard`."""
+    pool, his = _pool(given), _his(heard)
     out = []
     for m in TOKEN.finditer(sentence):
         if _decade(m):
             continue  # "high 20s": a rough band, not a figure
         value, places, unit = _read(m, sentence)
         hedged = bool(HEDGED.search(sentence[max(0, m.start() - 12):m.start()]))
-        if not _backed(value, places, pool[unit] if unit else pool[None], hedged):
+        if not (_backed(value, places, pool[unit] if unit else pool[None], hedged) or value in his):
             out.append(m.group(0).strip())
     for m in SPELLED.finditer(sentence):
         n, unit = WORDS[m.group(1).lower()], m.group(2).lower()
         value, places = (n / 10, 1) if unit.startswith("tenth") else (n, 0)
         kind = "%" if unit == "percent" else "°C" if unit.startswith("degree") else None
-        if not _backed(value, places, pool[kind]):
+        if not (_backed(value, places, pool[kind]) or value in his):
             out.append(m.group(0))
     return out
 
@@ -66,6 +67,12 @@ def _pool(text):
         if m.group(1):
             out[None].add(float(m.group(2)))  # "a 16.7"
     return out
+
+
+def _his(text):
+    """The figures in the driver's own words, digits or spelled out ("the one" isn't a figure)."""
+    words = {WORDS[w] for w in re.findall(r"[a-z]+", text.lower()) if WORDS.get(w, 0) > 1}
+    return {_read(m, text)[0] for m in TOKEN.finditer(text)} | words
 
 
 def _decade(m):

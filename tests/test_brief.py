@@ -217,6 +217,27 @@ class Gaps(unittest.TestCase):
         rates = calc.wear_rates(self.st.laps.cars[0])
         self.assertAlmostEqual(rates[3], 3.0, places=1)  # FR
 
+    def test_no_wear_rate_until_the_new_set_has_laps(self):
+        xs = self.st.laps.cars[0]
+        stops = xs[-1]["stops"]
+        self.assertIsNotNone(calc.wear_rates(xs, stops=stops))
+        self.assertIsNone(calc.wear_rates(xs, stops=stops + 1))  # just stopped: the rate would be the old set's
+
+    def test_no_wear_rate_from_a_set_changed_in_the_garage(self):
+        xs = self.st.laps.cars[0]
+        tyre, age = xs[-1]["tyre"], xs[-1]["age"]
+        self.assertIsNotNone(calc.wear_rates(xs, fitted=(tyre, age)))
+        self.assertIsNone(calc.wear_rates(xs, fitted=(tyre + 1, 0)))  # practice: no stop counted, another compound
+        self.assertIsNone(calc.wear_rates(xs, fitted=(tyre, 0)))  # the same compound, a new set
+        b = race.Race(self.st)
+        self.assertIsNotNone(strategy.stint_rates(b))
+        status = b.status()
+        status["visualTyreCompound"] += 1
+        try:
+            self.assertIsNone(strategy.stint_rates(b))
+        finally:
+            status["visualTyreCompound"] -= 1
+
     def test_pit_loss_from_observed_stop(self):
         loss, n = calc.pit_loss(self.st.laps, self.st.history)
         self.assertEqual(n, 1)

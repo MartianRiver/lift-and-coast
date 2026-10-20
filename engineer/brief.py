@@ -178,7 +178,7 @@ class Brief:
 
     def _wear(self, wear):
         line = "  wear   " + wheels(wear, "{:.0f}%")
-        rates = calc.wear_rates(self.st.laps.cars.get(self.me, []))
+        rates = strategy.stint_rates(self.r)
         out = self._wear_around(wear)
         if rates:
             w = max(range(4), key=lambda i: rates[i])

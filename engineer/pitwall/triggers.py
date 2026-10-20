@@ -106,6 +106,8 @@ def _mine(b, mem):
 
 
 def _tyres(b):
+    if b.my["pitStatus"]:  # stopping now: the old set's wear doesn't matter any more
+        return []
     w = strategy.worn_in(b)
     if not w or w[1] is None or w[1] > TYRE_LAPS or w[1] >= b.laps_left():
         return []
@@ -125,7 +127,7 @@ def tyre_target(b, box):
 
 
 def _target(b, box):
-    got = tyre_target(b, box)
+    got = not b.my["pitStatus"] and tyre_target(b, box)
     if not got or got[0]["at"] <= strategy.WORN or b.s["safetyCarStatus"]:
         return []
     t, what = got
