@@ -3,6 +3,7 @@ import math
 import statistics
 
 DRY = {16, 17, 18}  # visual soft/medium/hard
+WRAPPED = 60000     # a gap's ms part above this, with no minutes, is below zero
 ERS_STORE = 4e6  # J, a full battery
 
 
@@ -175,10 +176,17 @@ def gaps(laps, me, cars, window=3, live=None):
     return out
 
 
+def delta_ms(c, key):
+    """A live gap field in ms. The ms part is unsigned: a car a few ms ahead on timing whose place hasn't
+    changed yet reads 65 s or so (65536 less what it's ahead by)."""
+    ms = c[key + "MSPart"]
+    return ms - 65536 if not c[key + "MinutesPart"] and ms > WRAPPED else c[key + "MinutesPart"] * 60000 + ms
+
+
 def to_leader(live, idx):
     """Seconds behind the leader as the game times it, or None where it doesn't: 0 in the pit lane."""
     c = live[idx]
-    secs = c["deltaToRaceLeaderMinutesPart"] * 60 + c["deltaToRaceLeaderMSPart"] / 1000
+    secs = delta_ms(c, "deltaToRaceLeader") / 1000
     if c["pitStatus"] or c["resultStatus"] != 2 or not (secs or c["carPosition"] == 1):
         return None
     return secs
@@ -205,8 +213,10 @@ def stops_seen(laps, history):
         sc = laps.sc_laps(idx)
         times = {n: ms for n, ms, _ in completed_laps(history.get(idx)) if n not in sc}
         for a, b in zip(xs, xs[1:]):
-            if b["stops"] > a["stops"] and b["lap"] == a["lap"] + 1:
-                got = stop_loss(times, (a["lap"] - 1, a["lap"], a["lap"] + 1))
+            around = (a["lap"] - 1, a["lap"], a["lap"] + 1)
+            # an SC lap among them leaves the wrong pair to pick from: a lap before and the in-lap
+            if b["stops"] > a["stops"] and b["lap"] == a["lap"] + 1 and not sc.intersection(around):
+                got = stop_loss(times, around)
                 if got:
                     out.append((idx, times, got[1], got[0]))
     return out

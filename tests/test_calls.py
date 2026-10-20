@@ -3,13 +3,15 @@ import unittest
 from unittest.mock import patch
 
 from engineer import brief, calls
-from engineer.calls import Caller, common, events, gaps
+from engineer.calls import Caller, common, events, gaps, tyres
 from engineer.pitwall import triggers
+from engineer.calls import caller as caller_mod
 from engineer.calls.scan import SETTLE, scan
 from engineer.race import Race
 from engineer.spec import PACKETS
 from tests import radio_rows
 from tests.test_brief import Hub, raced
+from tests.test_strategy import SOFT, brazil
 
 
 class Rival(unittest.TestCase):
@@ -65,6 +67,30 @@ class InRange(unittest.TestCase):
         self.gap(2600)
         self.assertEqual(len(self.gap(950)), 1)
 
+    def test_armed_twice_in_a_lap_is_a_new_call(self):
+        # #20: Hamilton re-armed on lap 2 under the same key, so the scan dropped it as said and he stayed silent
+        (first,) = self.gap(900)
+        self.gap(2600)
+        self.b.lap_pkt["header"]["sessionTime"] += 10
+        (again,) = self.gap(900)
+        self.assertNotEqual(first["key"], again["key"])
+
+    def test_level_on_timing_with_the_leader_does_not_re_arm(self):
+        # Losail sprint, last lap: Verstappen 0.03 behind, then 16 ms ahead on timing while still P2,
+        # which the game's unsigned ms part sends as 65520 (65.5 s) for 12 s
+        leader = self.cars[self.ahead]
+        self.assertEqual(leader["carPosition"], 1)
+        self.assertEqual(len(self.gap(30)), 1)
+        leader.update(deltaToRaceLeaderMinutesPart=0, deltaToRaceLeaderMSPart=0)
+        self.cars[self.b.me].update(deltaToRaceLeaderMinutesPart=0, deltaToRaceLeaderMSPart=65520)
+        self.assertEqual(gaps.in_range(self.b, self.mem), [])
+        self.assertEqual(self.gap(300), [])
+
+    def test_a_call_that_was_never_said_leaves_the_car_armed(self):
+        (c,) = self.gap(900)
+        c["unsaid"]()  # expired waiting for a straight
+        self.assertEqual(len(self.gap(900)), 1)
+
     def test_not_said_once_he_is_past(self):
         (c,) = self.gap(900)
         me, them = self.cars[self.b.me], self.cars[self.ahead]
@@ -85,6 +111,16 @@ class InRange(unittest.TestCase):
         self.b.lap_pkt["header"]["sessionTime"] += gaps.JUST_PASSED  # still on him half a minute later: worth it now
         self.assertEqual(len(self.gap(900)), 1)
 
+    def test_a_car_called_ahead_is_a_new_call_once_he_is_behind(self):
+        # Losail sprint: "within a second of Verstappen" ahead, then he sat 0.5 s behind for six laps unsaid
+        self.assertEqual(len(self.gap(900)), 1)
+        me, them = self.cars[self.b.me], self.cars[self.ahead]
+        me["carPosition"], them["carPosition"] = them["carPosition"], me["carPosition"]
+        (c,) = self.gap(600, car=self.ahead)
+        self.assertEqual(c["text"](self.b), f"{common.nice(self.b.name(self.ahead))} is within a second.")
+        me["carPosition"], them["carPosition"] = them["carPosition"], me["carPosition"]  # and back: a battle
+        self.assertEqual(self.gap(700), [])
+
     def test_drs_range_only_when_the_race_has_drs(self):
         behind = next(i for i in self.b.active() if self.cars[i]["carPosition"] == self.b.my["carPosition"] + 1)
         (c,) = [c for c in self.gap(800, car=behind) if c["key"][1] == behind]
@@ -94,6 +130,12 @@ class InRange(unittest.TestCase):
         self.assertEqual(c["text"](self.b), f"{who} is within a second, in DRS range.")
         self.r.event(self.b.now + 2, "DRSD", bytes([0]))
         self.assertEqual(c["text"](self.b), f"{who} is within a second.")
+
+
+class Overwear(unittest.TestCase):
+    def test_no_flag_projection_while_the_second_compound_is_owed(self):
+        self.assertFalse(tyres._at_flag(brazil(), 1, 4.5))  # this set comes off at the stop
+        self.assertEqual(tyres._at_flag(brazil(run=(SOFT,)), 1, 4.5), 50 + 4.5 * 13)
 
 
 class Settling(unittest.TestCase):
@@ -128,8 +170,16 @@ class Delivery(unittest.TestCase):
         self.r.send(6, self.t, **{k: v for k, v in tel.items() if k != "header"})
         return self.caller.step()
 
-    def push(self, prio=calls.NORMAL, ttl=40, text="hello"):
-        self.caller.queue.append({"key": object(), "topic": "t", "prio": prio, "text": lambda b: text, "ttl": ttl, "at": self.t})
+    def drive(self, secs):
+        """Steps the clock a second at a time, as the game does when it's not paused: the calls said."""
+        out = []
+        for _ in range(round(secs)):
+            out += self.step(dt=1.0)
+        return out
+
+    def push(self, prio=calls.NORMAL, ttl=40, text="hello", topic="t", unsaid=None):
+        self.caller.queue.append({"key": object(), "topic": topic, "prio": prio, "text": lambda b: text, "ttl": ttl,
+                                  "at": self.t, "unsaid": unsaid})
 
     def test_waits_for_a_second_of_straight(self):
         self.push()
@@ -147,11 +197,56 @@ class Delivery(unittest.TestCase):
         self.push(prio=calls.URGENT, text="Safety car, safety car.")
         self.assertEqual(len(self.step(throttle=0.3, brake=1.0, dt=0.2)), 1)
 
+    def test_no_tyre_call_about_the_corner_the_quick_brief_just_named(self):
+        # Losail sprint: "…Front-left 31%." then 7 s later "Front-left is the limit, 31% worn."
+        self.caller.quick_said("P1, Verstappen 0.4 behind. Front-left 31%.")
+        self.push(text="Front-left is the limit, 31% worn.", topic="tyres")
+        self.push(text="Rear-right's wearing 1.6 times the field's rate.", topic="tyres")
+        self.step(dt=0.2)
+        self.step(dt=0.6)
+        self.assertEqual([c["text"] for c in self.step(dt=0.6)], ["Rear-right's wearing 1.6 times the field's rate."])
+        self.assertEqual(self.caller.queue, [])
+        self.drive(caller_mod.QUICK_REPEAT)
+        self.push(text="Front-left is the limit, 40% worn.", topic="tyres")
+        self.assertEqual(len(self.drive(2)), 1)  # long enough after it
+
+    def test_the_quick_brief_holds_back_only_tyre_calls(self):
+        self.caller.quick_said("P1. Front-left 31%.")
+        self.push(prio=calls.URGENT, text="Puncture, front-left.", topic="damage")
+        self.assertEqual(len(self.step(throttle=0.3, dt=0.2)), 1)
+
+    def test_nothing_once_he_has_retired(self):
+        # Melbourne: crashed out, the game paused, and the waiting "Safety car, safety car." went as he retired
+        self.r.event(self.t, "RTMT", bytes([3, 3]))  # another car
+        self.push(prio=calls.URGENT, text="Safety car, safety car.")
+        self.assertEqual(len(self.step(dt=0.2)), 1)
+        self.push(prio=calls.URGENT, text="Safety car, safety car.")
+        self.assertEqual(self.step(dt=6.0), [])  # the clock moves on out of a pause: wait for that moment's events
+        self.r.event(self.t, "RTMT", bytes([0, 3]))
+        self.assertEqual(self.step(dt=0.2), [])
+        self.assertEqual(self.caller.queue, [])
+
+    def test_a_pause_holds_a_call_for_one_look(self):
+        self.push(prio=calls.URGENT, text="Safety car, safety car.")
+        self.assertEqual(self.step(dt=6.0), [])
+        self.assertEqual(len(self.step(dt=0.2)), 1)
+
+    def test_nothing_once_the_session_has_ended(self):
+        self.push(prio=calls.URGENT, text="Safety car, safety car.")
+        self.r.event(self.t, "SEND")
+        self.assertEqual(self.step(dt=0.2), [])
+
     def test_old_calls_expire(self):
-        self.push(ttl=5)
+        unsaid = []
+        self.push(ttl=5, unsaid=lambda: unsaid.append("expired"))
         self.step(throttle=0.2, dt=6)
         self.assertEqual(self.step(dt=2.0), [])
         self.assertEqual(self.caller.queue, [])
+        self.assertEqual(unsaid, ["expired"])
+        self.push(text=None, unsaid=lambda: unsaid.append("stale"))  # stopped being true while it waited
+        for _ in range(3):
+            self.step(dt=0.6)
+        self.assertEqual(unsaid, ["expired", "stale"])
 
     def test_never_talks_over_the_driver(self):
         self.caller.busy = lambda: True
@@ -167,7 +262,7 @@ class Delivery(unittest.TestCase):
         self.step(dt=1.2)
         self.caller.at = lambda: (1, 15, 17)
         self.push(text="live")
-        self.step(dt=7.0)
+        self.drive(7)
         self.assertEqual(rows("call"), [{"kind": "call", **self.caller.sent[0]}])
         self.assertEqual(self.caller.sent[0]["text"], "live")
 
@@ -184,7 +279,7 @@ class Delivery(unittest.TestCase):
         self.step(dt=0.2)
         self.assertEqual([c["text"] for c in self.step(dt=1.2)], ["one"])
         self.assertEqual(self.step(dt=1.0), [])
-        self.assertEqual([c["text"] for c in self.step(dt=5.5)], ["two"])
+        self.assertEqual([c["text"] for c in self.drive(6)], ["two"])
 
 
 class RedFlag(unittest.TestCase):

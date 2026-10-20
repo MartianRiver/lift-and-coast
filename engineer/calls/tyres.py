@@ -75,8 +75,9 @@ def _overwear_level(b):
 
 
 def _at_flag(b, i, rate):
+    """None while a second compound is owed: this set won't see the flag."""
     dmg = b.damage()
-    return dmg and dmg["tyresWear"][i] + rate * (b.laps_left() + 1)
+    return dmg and not strategy.stop_owed(b) and dmg["tyresWear"][i] + rate * (b.laps_left() + 1)
 
 
 def _overwear(b):

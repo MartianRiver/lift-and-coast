@@ -16,7 +16,7 @@ def in_range(b, mem):
     hundred metres. The gap at the line is a lap late for this: the move has often happened by then."""
     if b.s["safetyCarStatus"] or b.my["currentLapNum"] < 2 or stopping(b):
         return []
-    said, out = mem.setdefault("range", set()), []
+    said, out = mem.setdefault("range", set()), []  # (car, -1 ahead / +1 behind): once each side
     swapped = {e["idx"] for e in b.st.incidents.log if e["kind"] in ("passed", "lost") and b.now - e["t"] < JUST_PASSED}
     for step in (-1, +1):
         idx = _live_neighbour(b, step)
@@ -24,11 +24,12 @@ def in_range(b, mem):
         if not gap:
             continue
         if gap > REARM:
-            said.discard(idx)
-        elif gap <= IN_RANGE and idx not in said | swapped:
-            said.add(idx)
-            out.append(call(("range", idx, b.my["currentLapNum"]), "gap", NORMAL,
-                            lambda b, i=idx, s=step: _range_words(b, i, s), ttl=20))
+            said.discard((idx, step))
+        elif gap <= IN_RANGE and (idx, step) not in said and idx not in swapped:
+            said.add((idx, step))
+            out.append(call(("range", idx, round(b.now, 1)), "gap", NORMAL,  # a key per arming: twice a lap is fine
+                            lambda b, i=idx, s=step: _range_words(b, i, s), ttl=20,
+                            unsaid=lambda k=(idx, step): said.discard(k)))  # not said: the next time counts
     return out
 
 

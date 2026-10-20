@@ -32,7 +32,9 @@ def measure(db, uid):
         for (end, was), (_, now) in zip(stints, stints[1:]):
             # endLap is the laps done on the set: the in-lap is the one after (endLap 12: in-lap 13, out-lap 14)
             around = (end, end + 1, end + 2)
-            got, kind = calc.stop_loss(green, around), "weather" if (was in WET) != (now in WET) else "green"
+            # as live: an SC lap among them makes it an SC stop, or the pair left is a lap before and the in-lap
+            clean = all(n in green for n in around if n in times)
+            got, kind = clean and calc.stop_loss(green, around), "weather" if (was in WET) != (now in WET) else "green"
             if not got:
                 got, kind = calc.stop_loss(times, around), "sc"
             if not got:

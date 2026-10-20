@@ -13,7 +13,7 @@ from collections import deque
 from .. import log, radiolog, usage
 from ..race import Race, ready
 from ..spec import MAX_CARS
-from .common import LOW, NORMAL, URGENT
+from .common import CORNERS, LOW, NORMAL, URGENT
 from .scan import scan
 
 _log = log.get("calls")
@@ -29,6 +29,8 @@ REPLIES = {"quiet": "Copy, only the important stuff.", "normal": "Copy, back to 
 QUIET = 5.0       # s without packets before the watcher stands down
 STRAIGHT_SECS = 1.0
 SPACING = 6.0     # between calls
+JUMP = 2.0        # s of session time between two looks: the game was paused or skipped ahead
+QUICK_REPEAT = 20.0  # s after the quick brief that a tyre call about the corner it named only repeats it
 TICK = 0.2
 
 
@@ -45,11 +47,22 @@ class Caller:
 
     def _reset(self, uid):
         self._uid, self.mem, self.queue, self._pushed = uid, {}, [], []
-        self._flat_since, self._last_out = None, -1e9
+        self._flat_since, self._last_out, self._quick, self._last_now = None, -1e9, None, None
 
     def push(self, calls):
         """Calls from outside the scan (the pit wall's), queued like ours at the next step."""
         self._pushed += calls
+
+    def quick_said(self, text):
+        """The quick brief was just said, outside the queue."""
+        with self.state.lock:
+            if ready(self.state):
+                self._quick = Race(self.state).now, text.lower()
+
+    def _repeats(self, c, text, now):
+        if c["topic"] != "tyres" or not self._quick or not 0 <= now - self._quick[0] <= QUICK_REPEAT:
+            return False
+        return any(w in text.lower() and w in self._quick[1] for w in CORNERS.values())
 
     def command(self, text):
         """"less chat" and the like: changes how much gets said and answers for the radio, else None."""
@@ -84,6 +97,9 @@ class Caller:
             b = Race(st)
             if not b.race or b.me >= MAX_CARS:
                 return []
+            if b.over():  # a call still waiting was said as he retired
+                self.queue.clear()
+                return []
             now = b.now
             if now < self._last_out:  # flashback: what was queued describes a moment that's gone
                 self.queue.clear()
@@ -94,7 +110,11 @@ class Caller:
             if any(c["topic"] == "team" for c in pushed):  # the team's newest call replaces one still waiting
                 self.queue = [c for c in self.queue if c["topic"] != "team"]
             self.queue += [{**c, "at": now} for c in found if c["prio"] <= top] + [{**c, "at": now} for c in pushed]
-            out = self._deliver(b, now)
+            # out of a pause, the packet that moves the clock lands before that moment's events (a retirement,
+            # the session's end): give them a look before saying anything
+            jumped = self._last_now is not None and now - self._last_now > JUMP
+            self._last_now = now
+            out = [] if jumped else self._deliver(b, now)
         for c in out:
             self.said(c["text"])
         return out
@@ -103,6 +123,7 @@ class Caller:
         for c in self.queue:
             if now - c["at"] > c["ttl"]:
                 self._metric("call_expired", 1, topic=c["topic"])  # never found a straight in time
+                self._unsaid(c)
         self.queue = [c for c in self.queue if 0 <= now - c["at"] <= c["ttl"]]
         if not self.queue or self.busy() or now - self._last_out < SPACING:
             return []
@@ -112,11 +133,17 @@ class Caller:
                 continue
             self.queue.remove(c)
             text = c["text"](b)
-            if text:
+            if text and not self._repeats(c, text, now):
                 self._metric("call_delay_s", round(now - c["at"], 1), topic=c["topic"])
                 return [self._send(b, c, text, now)]
             self._metric("call_stale", 1, topic=c["topic"])
+            self._unsaid(c)
         return []
+
+    @staticmethod
+    def _unsaid(c):
+        if c.get("unsaid"):
+            c["unsaid"]()
 
     def _metric(self, kind, value, **data):
         if self.at:

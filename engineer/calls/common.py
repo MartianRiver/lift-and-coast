@@ -5,9 +5,10 @@ URGENT, NORMAL, LOW = 0, 1, 2
 CORNERS = {"RL": "rear-left", "RR": "rear-right", "FL": "front-left", "FR": "front-right"}
 
 
-def call(key, topic, prio, text, ttl=40):
-    """`text(race)` runs again when the call is delivered and returns None if it's stopped being true."""
-    return {"key": key, "topic": topic, "prio": prio, "text": text, "ttl": ttl}
+def call(key, topic, prio, text, ttl=40, unsaid=None):
+    """`text(race)` runs again when the call is delivered and returns None if it's stopped being true.
+    `unsaid()` runs if it's never said: it expired waiting for a straight, or wasn't true any more."""
+    return {"key": key, "topic": topic, "prio": prio, "text": text, "ttl": ttl, "unsaid": unsaid}
 
 
 def nice(name):

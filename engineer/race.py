@@ -78,6 +78,11 @@ class Race:
         races = [t for t in self.s["weekendStructure"][:self.s["numSessionsInWeekend"]] if t in RACES]
         return len(races) > 1 and self.s["sessionType"] == min(races)
 
+    def over(self):
+        """The session's ended, or my car's retired: its lap data can still say active."""
+        return any(e["code"] == "SEND" or e["code"] == "RTMT" and (e["details"] or {}).get("vehicleIdx") == self.me
+                   for e in self.st.events)
+
     def red_flag(self):
         """The red flag still in force (its restart's lights haven't gone out yet), else None."""
         for ev in reversed(self.st.events):

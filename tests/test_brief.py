@@ -192,6 +192,13 @@ class Gaps(unittest.TestCase):
         finally:
             latest["lapData"] = saved
 
+    def test_a_car_ahead_on_timing_before_its_place_changes(self):
+        cars = self.live((2, 0.0), (0, 1.0))
+        cars[0].update(deltaToRaceLeaderMinutesPart=0, deltaToRaceLeaderMSPart=65520)  # 16 ms ahead, still P2
+        self.assertAlmostEqual(calc.to_leader(cars, 0), -0.016, places=3)
+        cars[0].update(deltaToCarInFrontMinutesPart=1, deltaToCarInFrontMSPart=5500)
+        self.assertEqual(calc.delta_ms(cars[0], "deltaToCarInFront"), 65500)  # a real 1:05.5
+
     def test_no_live_time_falls_back_to_the_line(self):
         line = calc.gaps(self.st.laps, 0, [1, 2])
         g = calc.gaps(self.st.laps, 0, [1, 2], live=self.live((2, 0.0), (1, 0.6), (0, 1.0), pitting=[1]))
@@ -237,6 +244,25 @@ class Gaps(unittest.TestCase):
             self.assertIsNone(strategy.stint_rates(b))
         finally:
             status["visualTyreCompound"] -= 1
+
+    def test_the_fastest_lap_of_the_race(self):
+        r = raced()
+        self.assertIn("fastest lap of the race 1:29.700 (yours, L2)", brief.build(r.st))
+        r.st.history[1]["lapHistoryData"][1]["lapTimeInMS"] = 89_500
+        self.assertIn("fastest lap of the race 1:29.500 (TSUNODA, L2)", brief.build(r.st))
+        for h in r.st.history.values():
+            h["bestLapTimeLapNum"] = 0  # no valid lap yet
+        self.assertNotIn("fastest lap", brief.build(r.st))
+
+    def test_where_he_started_and_that_the_race_is_over(self):
+        r = raced()
+        me = r.st.latest[2]["lapData"][0]
+        me["gridPosition"] = 3
+        text = brief.build(r.st)
+        self.assertIn("(started P3)", text)
+        self.assertNotIn("chequered flag", text)
+        me["resultStatus"] = 3
+        self.assertIn("you've taken the chequered flag", brief.build(r.st))
 
     def test_pit_loss_from_observed_stop(self):
         loss, n = calc.pit_loss(self.st.laps, self.st.history)
@@ -337,6 +363,14 @@ class SafetyCar(unittest.TestCase):
             if x["lap"] in (STOP_LAP + 1, STOP_LAP + 2):  # laps 4 and 5 ran under SC
                 x["scLap"] = True
         self.assertEqual(r.st.laps.sc_laps(3), {STOP_LAP, STOP_LAP + 1})
+        self.assertIsNone(calc.pit_loss(r.st.laps, r.st.history))
+
+    def test_an_out_lap_under_sc_is_not_measured_from_the_laps_before(self):
+        # Monza's red flag: the in-lap green, the out-lap under SC; the lap before and the in-lap said ≈7 s
+        r = raced()
+        for x in r.st.laps.cars[3]:
+            x["scLap"] = x["lap"] == STOP_LAP + 2
+        self.assertEqual(r.st.laps.sc_laps(3), {STOP_LAP + 1})
         self.assertIsNone(calc.pit_loss(r.st.laps, r.st.history))
 
 

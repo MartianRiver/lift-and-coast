@@ -61,6 +61,13 @@ class Archive(unittest.TestCase):
         self.race("1", "2026-10-14 10:00", [stop], sc)
         self.assertEqual(pitstops.measure(self.db, "1")[0]["kind"], "sc")
 
+    def test_an_out_lap_under_the_safety_car_is_not_a_green_flag_sample(self):
+        # Monza: in-lap 9 green, out-lap 10 under the red flag's SC; laps 8 + 9 alone said ≈7 s
+        sc = [(0, 9 * 90 + 10, "SCAR", {"safetyCarType": 1, "eventType": 0}),
+              (1, 9 * 90 + 40, "SCAR", {"safetyCarType": 1, "eventType": 2})]
+        self.race("1", "2026-10-14 10:00", [(times({8: 500, 9: 7000, 10: 90000}), [[8, "Medium"], [255, "Hard"]])], sc)
+        self.assertEqual([s["kind"] for s in pitstops.measure(self.db, "1")], [])  # 180 s out-lap: no sample at all
+
     def test_a_safety_car_a_flashback_took_back_does_not_count(self):
         events = [(0, 9 * 90 - 30, "SCAR", {"safetyCarType": 1, "eventType": 0}),
                   (1, 9 * 90 - 20, "FLBK", {"flashbackSessionTime": 9 * 90 - 40})]
