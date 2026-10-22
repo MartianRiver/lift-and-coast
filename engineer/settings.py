@@ -112,7 +112,7 @@ class Settings:
 
     def _read(self):
         try:
-            got = json.loads(self.path.read_text())
+            got = json.loads(self.path.read_text(encoding="utf-8"))
             return got if isinstance(got, dict) else {}
         except FileNotFoundError:
             return {}
@@ -185,7 +185,7 @@ class Settings:
             self._file.update(clean)
             self.path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self._file, indent=1))
+            tmp.write_text(json.dumps(self._file, indent=1), encoding="utf-8")
             tmp.replace(self.path)
         _log.info("settings saved", **{k: v for k, v in clean.items() if k != "topics"})
         return clean

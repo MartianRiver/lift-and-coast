@@ -134,7 +134,7 @@ class Topics(unittest.TestCase):
     def test_every_call_topic_has_a_switch(self):
         used = set()
         for path in [*ENGINE.glob("calls/*.py"), *ENGINE.glob("pitwall/*.py"), ENGINE / "crew.py"]:
-            used |= set(re.findall(r'\bcall\((?:\(.*?\)|\w+), "(\w+)"', path.read_text()))
+            used |= set(re.findall(r'\bcall\((?:\(.*?\)|\w+), "(\w+)"', path.read_text(encoding="utf-8")))
         self.assertGreater(len(used), 15)
         self.assertEqual(used - set(GROUP), set())
 
