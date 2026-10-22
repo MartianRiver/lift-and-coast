@@ -14,11 +14,11 @@ What does leave your computer is what the engineer and the strategy team need to
 - the name and pronouns you gave it, so it talks to you rather than about "the driver";
 - for the strategy team, the brief you gave it ("damage control, few rewinds") and its own earlier notes from this race.
 
-If the engineer's model hasn't started answering within a few seconds, the same request goes to a second model (Claude Haiku 5.5 unless you've picked another with `--engineer-fallback`). OpenRouter passes the request to whichever provider runs the model. What they keep is up to their policies, and OpenRouter's account settings let you rule out providers that log or train on requests. If you'd rather nothing left your computer at all, run a model locally (Ollama, LM Studio, anything OpenAI-compatible) and point `RE_LLM_URL` at it.
+If the engineer's model hasn't started answering within a few seconds, the same request goes to a second model (Claude Haiku 5.5 unless you've picked another in Settings or with `--engineer-fallback`). OpenRouter passes the request to whichever provider runs the model. What they keep is up to their policies, and OpenRouter's account settings let you rule out providers that log or train on requests. If you'd rather nothing left your computer at all, run a model locally (Ollama, LM Studio, anything OpenAI-compatible) and point `RE_LLM_URL` at it.
 
 Your API key is only sent to that endpoint, and it's never written to the log.
 
-**Downloads.** Installing fetches the Python packages. The first start with voice downloads the speech model and the voice from Hugging Face (about 2.3 GB and 340 MB). Apart from those downloads and the model calls above, nothing in this project's code connects to anything outside your own network.
+**Downloads.** Installing fetches the Python packages. The first start with voice downloads the speech model and the voice from Hugging Face (about 2.3 GB and 340 MB). Opening the Settings tab fetches the list of models from OpenRouter (a public list: no key or anything about you goes with it), or from the server `RE_LLM_URL` points at, with its key, at most once an hour. Apart from those and the model calls above, nothing in this project's code connects to anything outside your own network.
 
 **On your own network**, the game sends telemetry to the computer over UDP, and the dashboard is only reachable from the computer itself (`localhost`).
 
@@ -35,7 +35,7 @@ All of it is in `captures/` (or wherever `RE_DATA_DIR` points), except your API 
 - `radio/`: every radio clip you recorded, what the engineer said back (text and audio), and a log of both;
 - `llm/`: every request sent to the models and the reply that came back, word for word, one file a day;
 - `logs/`: a log of each run: what it was doing, errors, and what you said on the radio as text;
-- `driver.json`, `fixes.json`, `pitwall-brief.json`, `pitwall-prep.json`: your name and pronouns, the speech-to-text corrections you taught it, your brief for the strategy team and the last race plan.
+- `driver.json`, `settings.json`, `fixes.json`, `pitwall-brief.json`, `pitwall-prep.json`: your name and pronouns, what you set in the Settings tab, the speech-to-text corrections you taught it, your brief for the strategy team and the last race plan.
 
 Deleting any of it is safe. Deleting `captures/` entirely starts you from scratch.
 

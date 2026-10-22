@@ -3,6 +3,10 @@ from ..fmt import WHEELS
 
 URGENT, NORMAL, LOW = 0, 1, 2
 CORNERS = {"RL": "rear-left", "RR": "rear-right", "FL": "front-left", "FR": "front-right"}
+# the switches in Settings: each call's topic is under one. The code's own strategy calls are what the team says when it's on
+GROUPS = {"gaps": ("gap", "last", "lap", "pass", "out", "pit"), "tyres": ("tyres",), "damage": ("damage", "contact"),
+          "flags": ("sc", "flag", "weather", "limits", "penalty"), "fuel": ("fuel",), "team": ("team", "strategy")}
+GROUP = {topic: g for g, topics in GROUPS.items() for topic in topics}
 
 
 def call(key, topic, prio, text, ttl=40, unsaid=None):

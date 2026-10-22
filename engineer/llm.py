@@ -27,15 +27,21 @@ class LLMError(Exception):
 
 def _env(name):
     """From the environment, else from .env."""
+    return env_where(name)[0]
+
+
+def env_where(name):
+    """(value, "the environment" | ".env"), or (None, None)."""
     if os.environ.get(name):
-        return os.environ[name]
+        return os.environ[name], "the environment"
     try:
         for line in ENV_FILE.read_text().splitlines():
             if line.startswith(name + "="):
-                return line.split("=", 1)[1].strip().strip("'\"") or None
+                got = line.split("=", 1)[1].strip().strip("'\"") or None
+                return got, got and ".env"
     except FileNotFoundError:
         pass
-    return None
+    return None, None
 
 
 def base_url():

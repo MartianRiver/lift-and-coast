@@ -8,7 +8,8 @@ from .calls import NORMAL, URGENT, Caller
 from .calls.common import call
 from .engineer import DEFAULT_MODEL, FALLBACK, Engineer
 from .pitwall import MODELS, PitWall
-from .radio import Radio
+from .radio import Radio, button
+from .settings import SPECS
 
 HEARD_SECS = 300  # radio the team sees with each run
 _log = log.get("crew")
@@ -25,6 +26,38 @@ class Crew:
     speaker: object | None
     caller: Caller | None
     wall: PitWall | None = None
+    hub: object = None
+
+    def apply(self, cfg, keys):
+        """Settings changed in the tab, put into what's running -> {key: why it waits for the next start}."""
+        later = {}
+        for key in keys:
+            v = cfg.get(key)
+            if key == "engineerModel" and self.engineer:
+                self.engineer.model = v
+            elif key == "engineerFallback" and self.engineer:
+                self.engineer.fallback = v
+            elif key in ("voice", "radioFx") and self.speaker:
+                if not self.speaker.use(cfg.get("voice"), cfg.get("radioFx")):
+                    later["voice"] = "another voice engine loads on the next start"
+            elif key == "calls" and self.caller:
+                self.caller.level = v
+            elif key == "topics" and self.caller:
+                self.caller.topics = {g for g, on in v.items() if on}
+            elif key in ("lead", "second") and self.wall:
+                self.wall.models = tuple(m for m in (cfg.get("lead"), cfg.get("second")) if m)
+            elif key == "budget" and self.wall:
+                self.wall.budget = v
+            elif key in ("radioButton", "quickButton", "radioMode"):
+                self.radio.trigger, self.radio.quick = button(cfg.get("radioButton")), button(cfg.get("quickButton"))
+                self.radio.mode = cfg.get("radioMode")
+                if self.hub:
+                    self.hub.publish("radio", self.radio.snapshot())
+            elif SPECS[key].restart:
+                later[key] = "on the next start"
+        if keys:
+            _log.info("settings applied", keys=sorted(keys), later=sorted(later))
+        return later
 
 
 def assemble(hub, state, model=DEFAULT_MODEL, engineer=True, mic=True, radio_mode="hold",
@@ -76,7 +109,7 @@ def assemble(hub, state, model=DEFAULT_MODEL, engineer=True, mic=True, radio_mod
     if wall:
         _staff(wall, eng, caller, radio)
     radio.on_quick.append(lambda: _quick(state, hub, eng, speaker, live, caller))
-    return Crew(eng, radio, speaker, caller, wall)
+    return Crew(eng, radio, speaker, caller, wall, hub)
 
 
 def _quick(state, hub, eng, speaker, live, caller):

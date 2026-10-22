@@ -30,6 +30,12 @@ ENGINES = {
               lambda m, t, v: m.generate_custom_voice(text=t, speaker=v, language="English", instruct=STYLE)),
 }
 DEFAULT_VOICE = "kokoro:bm_george"
+# the English ones; a voice of the engine already loaded changes at once, another engine on the next start
+VOICES = tuple(f"kokoro:{v}" for v in (
+    "bm_george", "bm_lewis", "bm_daniel", "bm_fable", "bf_emma", "bf_isabella", "bf_alice", "bf_lily",
+    "am_adam", "am_michael", "am_eric", "am_liam", "am_onyx", "am_echo", "am_fenrir", "am_puck",
+    "af_heart", "af_bella", "af_nicole", "af_sarah", "af_sky", "af_nova", "af_alloy", "af_aoede", "af_jessica", "af_kore",
+)) + ("kitten:expr-voice-5-m", "qwen3:ryan", "soprano")
 BLOCK = 0.05  # s per write to the sound card: how quickly a stop takes effect
 BAND = (300, 3400)  # the radio filter
 
@@ -141,6 +147,15 @@ class Speaker:
 
     def busy(self):
         return self._pending > 0
+
+    def use(self, spec, fx):
+        """Another voice of the engine that's loaded, from the next line said. False for another engine."""
+        name, voice = parse_voice(spec)
+        self.voice.fx = fx
+        if name != self.voice.name:
+            return False
+        self.voice.voice = voice
+        return True
 
     def _set(self, state, **extra):
         self.state = state

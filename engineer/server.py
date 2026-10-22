@@ -16,17 +16,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import archive, bundle, diagnostics, driver, llm, log, radiolog, usage, view
+from . import archive, bundle, diagnostics, driver, llm, log, models, radiolog, usage, view
 from .crew import assemble
 from .pitwall import BUDGET, MODELS, notes
 from .engineer import DEFAULT_MODEL, FALLBACK
+from .settings import SPECS, Settings
 from .glance import glance
 from .hub import Hub
 from .lookups import BUTTONS
 from .radio import QUICK, TRIGGER
 from .recorder import SessionRecorder
 from .state import RaceState
-from .tts import DEFAULT_VOICE
+from .tts import DEFAULT_VOICE, VOICES
 from .version import VERSION
 
 _log = log.get("server")
@@ -35,6 +36,7 @@ WEB = Path(__file__).resolve().parent.parent / "web"
 TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".wav": "audio/wav", ".zip": "application/zip"}
 # changes every server start; open pages reload when they see a new one (stale JS bit us)
 BUILD = str(time.time())
+HEAR = "Radio check. Gap to Norris is 1.4, you're taking two tenths a lap."
 
 
 def lan_ip():
@@ -77,7 +79,7 @@ class Server(ThreadingHTTPServer):
         _log.error("http handler crashed", client=client_address[0])
 
 
-def make_handler(state, listen, hub, crew, recorder=None):
+def make_handler(state, listen, hub, crew, recorder=None, cfg=None, off=None):
     radio, engineer, caller, speaker, wall = crew.radio, crew.engineer, crew.caller, crew.speaker, crew.wall
 
     class Handler(BaseHTTPRequestHandler):
@@ -184,6 +186,14 @@ def make_handler(state, listen, hub, crew, recorder=None):
                 if path == "/api/bundle":
                     return self._json(make_bundle(state, recorder, str(body.get("note", "")),
                                                   bool(body.get("audio", True)), bool(body.get("telemetry", True))))
+                if path == "/api/settings" and cfg:
+                    later = crew.apply(cfg, cfg.set(body))
+                    return self._json({**settings_view(cfg, crew, off), "later": later})
+                if path == "/api/settings/hear":
+                    if not speaker:
+                        return self._json({"error": "the voice is off"}, 409)
+                    speaker.say(HEAR)
+                    return self._json({"ok": True})
                 if path == "/api/fixes/forget":
                     radio.lexicon.forget(body["heard"])
                     return self._json(radio.lexicon.fixes)
@@ -208,6 +218,13 @@ def make_handler(state, listen, hub, crew, recorder=None):
                 if url.path == "/api/driver":
                     return self._json({**driver.get(), "choices": driver.PRONOUNS,
                                        "fromGame": driver.from_game(view.player_identity(state))})
+                if url.path == "/api/settings" and cfg:
+                    return self._json(settings_view(cfg, crew, off))
+                if url.path == "/api/models":
+                    try:
+                        return self._json(models.listing())
+                    except llm.LLMError as e:
+                        return self._json({"error": str(e)}, 502)
                 if url.path == "/api/diagnostics":
                     return self._json(view.clean(diagnostics.report(state, wall)))
                 if url.path == "/api/race":
@@ -242,6 +259,29 @@ def make_handler(state, listen, hub, crew, recorder=None):
     return Handler
 
 
+def settings_view(cfg, crew, off):
+    return {"settings": cfg.view(), "off": off or {}, "live": {"calls": crew.caller.level if crew.caller else None},
+            "voices": VOICES, "buttons": BUTTONS}
+
+
+def switched_off(args, crew):
+    """What isn't running, and why, so the tab can say so next to its settings."""
+    off = {}
+    if not crew.engineer:
+        off["engineer"] = "the server was started with --no-engineer"
+    elif crew.engineer.error:
+        off["engineer"] = crew.engineer.error
+    if not crew.speaker:
+        off["voice"] = "the server was started with --no-voice" if args.no_voice else "the voice needs Apple Silicon and the voice group"
+    if not crew.wall:
+        off["team"] = "the server was started with --no-pitwall" if args.no_pitwall else "the team needs the engineer and an API key"
+    if args.no_calls:
+        off["calls"] = "the server was started with --no-calls"
+    if args.no_radio:
+        off["radio"] = "the server was started with --no-radio"
+    return off
+
+
 def make_bundle(state, recorder, note, audio, telemetry):
     """A debug bundle of the session the game is in (or was in last), from the Diagnostics tab."""
     with state.lock:
@@ -262,26 +302,22 @@ def main():
     ap.add_argument("--udp-port", type=int, default=20777)
     ap.add_argument("--http-port", type=int, default=8077)
     ap.add_argument("--no-record", action="store_true", help="don't save sessions to captures/sessions/")
-    ap.add_argument("--radio-mode", choices=["hold", "toggle"], default="hold")
+    ap.add_argument("--radio-mode", choices=["hold", "toggle"])
     ap.add_argument("--no-radio", action="store_true", help="skip mic + speech model (typed questions still work)")
-    ap.add_argument("--radio-button", default=os.environ.get("RE_RADIO_BUTTON", TRIGGER),
-                    help='button that keys the radio: a UDP action number or a name ("Left Stick Click")')
-    ap.add_argument("--quick-button", default=os.environ.get("RE_QUICK_BUTTON", QUICK), help="button for the quick brief")
-    ap.add_argument("--engineer-model", default=os.environ.get("RE_ENGINEER_MODEL", DEFAULT_MODEL),
-                    help="OpenRouter model id for the engineer")
-    ap.add_argument("--engineer-fallback", default=os.environ.get("RE_ENGINEER_FALLBACK", FALLBACK),
-                    help='tried when the engineer model has said nothing in a few seconds ("none" to turn it off)')
+    ap.add_argument("--radio-button", help=f'button that keys the radio: a UDP action number or a name ("Left Stick Click"); default {TRIGGER}')
+    ap.add_argument("--quick-button", help=f"button for the quick brief; default {QUICK}")
+    ap.add_argument("--engineer-model", help=f"OpenRouter model id for the engineer; default {DEFAULT_MODEL}")
+    ap.add_argument("--engineer-fallback", help=f'tried when the engineer model has said nothing in a few seconds ("none" to turn it off); default {FALLBACK}')
     ap.add_argument("--no-engineer", action="store_true", help="transcribe only, no LLM replies")
     ap.add_argument("--no-voice", action="store_true", help="text only, the engineer doesn't speak aloud")
-    ap.add_argument("--voice", default=os.environ.get("RE_VOICE", DEFAULT_VOICE),
-                    help="engine[:voice] (kokoro:bm_george, kokoro:bm_daniel, soprano, kitten, qwen3:ryan)")
-    ap.add_argument("--radio-fx", action="store_true", help="band-limit the voice so it sounds like a radio")
+    ap.add_argument("--voice", help=f"engine[:voice] (kokoro:bm_george, kokoro:bm_daniel, soprano, kitten, qwen3:ryan); default {DEFAULT_VOICE}")
+    ap.add_argument("--radio-fx", action="store_true", default=None, help="band-limit the voice so it sounds like a radio")
     ap.add_argument("--audio-out", help="output device name (default: system output)")
     ap.add_argument("--no-calls", action="store_true", help="don't speak up unprompted (gaps, warnings, safety car...)")
-    ap.add_argument("--pitwall-models", default=os.environ.get("RE_PITWALL_MODELS", ",".join(MODELS)),
-                    help="the strategy team: lead[,second opinion] OpenRouter ids")
+    ap.add_argument("--pitwall-models", help=f"the strategy team: lead[,second opinion] OpenRouter ids; default {','.join(MODELS)}")
     ap.add_argument("--pitwall-budget", type=float, help=f"$ a session for the team (default {BUDGET})")
     ap.add_argument("--no-pitwall", action="store_true", help="no strategy team: the engineer and the code make the calls")
+    ap.epilog = "Settings given here or in the environment show locked in the dashboard's Settings tab."
     args = ap.parse_args()
 
     llm.TRACE = archive.DATA / "llm"
@@ -289,12 +325,16 @@ def main():
     _log.info("starting", version=VERSION, python=sys.version.split()[0], platform=sys.platform, **vars(args))
     hub = Hub()
     state = RaceState(hub)
-    crew = assemble(hub, state, args.engineer_model, engineer=not args.no_engineer, mic=not args.no_radio,
-                    radio_mode=args.radio_mode, voice=None if args.no_voice else args.voice, fx=args.radio_fx,
-                    device=args.audio_out, calls=not args.no_calls,
-                    team=None if args.no_pitwall else args.pitwall_models.split(","), budget=args.pitwall_budget,
-                    buttons={"trigger": args.radio_button, "quick": args.quick_button},
-                    fallback=None if args.engineer_fallback == "none" else args.engineer_fallback)
+    cfg = Settings({spec.flag: getattr(args, spec.flag[2:].replace("-", "_")) for spec in SPECS.values() if spec.flag})
+    got = cfg.all()
+    _log.info("settings", **{k: v for k, v in got.items() if k != "topics"})
+    crew = assemble(hub, state, got["engineerModel"], engineer=not args.no_engineer, mic=not args.no_radio,
+                    radio_mode=got["radioMode"], voice=None if args.no_voice else got["voice"], fx=got["radioFx"],
+                    device=got["audioOut"], calls=not args.no_calls,
+                    team=None if args.no_pitwall else [m for m in (got["lead"], got["second"]) if m], budget=got["budget"],
+                    buttons={"trigger": got["radioButton"], "quick": got["quickButton"]}, fallback=got["engineerFallback"])
+    crew.apply(cfg, ["calls", "topics"])
+    off = switched_off(args, crew)
     recorder = None if args.no_record else SessionRecorder()
     listen = {"ip": lan_ip(), "udpPort": args.udp_port, "recording": None,
               "dev": os.environ.get("RE_ENV") != "prod"}
@@ -302,7 +342,7 @@ def main():
     threading.Thread(target=listen_udp, args=(state, args.udp_port, recorder), daemon=True).start()
     # SIGTERM (pkill, closing the terminal) should still flush the capture
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    httpd = Server(("127.0.0.1", args.http_port), make_handler(state, listen, hub, crew, recorder))
+    httpd = Server(("127.0.0.1", args.http_port), make_handler(state, listen, hub, crew, recorder, cfg, off))
     _log.info("dashboard up", url=f"http://localhost:{args.http_port}", ip=listen["ip"])
     try:
         httpd.serve_forever()
