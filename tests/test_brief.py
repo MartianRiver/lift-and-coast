@@ -274,6 +274,21 @@ class Gaps(unittest.TestCase):
             text = brief.build(self.st)
         self.assertIn("green-flag loss ≈19.5s (over 20 stops in 1 earlier race here; the 1 stop this race said 22.0s)", text)
 
+    def test_the_shipped_figure_only_with_no_stop_of_his_own(self):
+        with mock.patch.object(calc, "pit_loss", return_value=None), mock.patch.object(pitstops, "usual", return_value=(21.5, 20)):
+            text = brief.build(self.st)
+        self.assertIn("green-flag loss ≈21.5s (a rule of thumb: what a stop here usually costs in F1 25, 20 stops measured;", text)
+        self.assertNotIn("rejoin estimate,", text)
+        with mock.patch.object(calc, "pit_loss", return_value=None), mock.patch.object(pitstops, "usual", return_value=(20.3, None)):
+            self.assertIn("≈20.3s (a rule of thumb: what a stop usually costs in F1 25; none measured at this track)", brief.build(self.st))
+        with mock.patch.object(pitstops, "usual", return_value=(21.5, 20)):
+            self.assertIn("loss ≈22.0s (from 1 stop this race)", brief.build(self.st))
+        me = self.st.latest[7]["carStatusData"][0]
+        self.addCleanup(me.update, visualTyreCompound=me["visualTyreCompound"])
+        me["visualTyreCompound"] = 7  # inters: the shipped figure is a dry one
+        with mock.patch.object(calc, "pit_loss", return_value=None), mock.patch.object(pitstops, "usual", return_value=(21.5, 20)):
+            self.assertIn("loss not measured yet (no stops seen)", brief.build(self.st))
+
     def test_rejoin(self):
         pos, ahead, behind = calc.rejoin(calc.gaps(self.st.laps, 0, [1, 2, 3]), 22.0)
         self.assertEqual((pos, ahead[0], behind[0]), (3, 1, 3))

@@ -100,6 +100,7 @@ def _quick(state, hub, eng, speaker, live, caller):
 def _staff(wall, eng, caller, radio):
     """The team speaks through the engineer's calls and hears the radio."""
     caller.team = True
+    caller.box = wall.planned_box
     wall.say = lambda text, urgent: caller.push([call(("team", text), "team", URGENT if urgent else NORMAL,
                                                        lambda b: text, ttl=60 if urgent else 90)])
     wall.fallback = caller.push

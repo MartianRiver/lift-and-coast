@@ -3,24 +3,30 @@
 The game's own number (read off its rejoin estimate) can be badly off (≈11 s where the stops
 cost 23–25). So every race the archive holds is a sample: in-lap + out-lap against the laps
 before, the same rule as a stop seen live (`calc.stop_loss`). Stops under SC/VSC and stops between
-slicks and wets are kept apart: neither is what a green-flag stop costs.
+slicks and wets, and between two wet sets, are kept apart: none of them is what a dry green-flag stop costs.
+
+`pitloss.json` ships each track's figure from the races recorded so far, for a track with no stop
+seen in your own races yet (`dev pits --write` rebuilds it, a release step).
 
     uv run python -m engineer.dev pits
 """
 import json
 import sqlite3
 import statistics
+from pathlib import Path
 
 from . import archive, calc, log
 
 _log = log.get("pitstops")
 
 WET = {"Inter", "Wet"}
+TABLE = Path(__file__).resolve().parent / "pitloss.json"
 _cache = {}
+_table = []
 
 
 def measure(db, uid):
-    """Every stop in one archived race: [{driver, lap (in-lap), loss, kind: green|sc|weather, laps ms}]."""
+    """Every stop in one archived race: [{driver, lap (in-lap), loss, kind: green|sc|weather|wet, laps ms}]."""
     sc = _sc_periods(db, uid)
     out = []
     for r in db.execute("select car_idx, driver, stints from results where session_uid = ? and stops > 0", (uid,)):
@@ -34,7 +40,8 @@ def measure(db, uid):
             around = (end, end + 1, end + 2)
             # as live: an SC lap among them makes it an SC stop, or the pair left is a lap before and the in-lap
             clean = all(n in green for n in around if n in times)
-            got, kind = clean and calc.stop_loss(green, around), "weather" if (was in WET) != (now in WET) else "green"
+            kind = "weather" if (was in WET) != (now in WET) else "wet" if was in WET else "green"
+            got = clean and calc.stop_loss(green, around)
             if not got:
                 got, kind = calc.stop_loss(times, around), "sc"
             if not got:
@@ -97,13 +104,13 @@ def races(db, track_id=None, formula=None, before=None):
 
 
 def by_track(db, **where):
-    """{track: {"green": [s], "sc": [s], "weather": [s], "races": n}}. A resumed save repeats the
+    """{track: {"id", "green": [s], "sc": [s], "weather": [s], "wet": [s], "races": n}}. A resumed save repeats the
     earlier laps under a new session, so the same stop is counted once."""
     out, seen = {}, set()
     for race in races(db, **where):
         stops = [s for s in measure(db, race["uid"]) if (race["track_id"], *s["key"]) not in seen]
         seen.update((race["track_id"], *s["key"]) for s in stops)
-        t = out.setdefault(race["track"], {"green": [], "sc": [], "weather": [], "races": 0})
+        t = out.setdefault(race["track"], {"id": race["track_id"], "green": [], "sc": [], "weather": [], "wet": [], "races": 0})
         t["races"] += any(s["kind"] == "green" for s in stops)
         for s in stops:
             t[s["kind"]].append(s["loss"])
@@ -136,3 +143,29 @@ def _here(uid, session):
         return None
     _log.info("pit loss from earlier races", track=session["trackId"], loss=round(statistics.median(green), 1), stops=len(green))
     return statistics.median(green), len(green), next(iter(t.values()))["races"]
+
+
+def table(db):
+    """What pitloss.json holds: each track's median green-flag loss in F1 races, and the median of those."""
+    tracks = {str(t["id"]): {"track": name, "loss": round(statistics.median(t["green"]), 1), "stops": len(t["green"])}
+              for name, t in by_track(db, formula=0).items() if t["green"]}
+    usual = round(statistics.median(t["loss"] for t in tracks.values()), 1) if tracks else None
+    return {"tracks": tracks, "usual": usual}
+
+
+def usual(session):
+    """(seconds, stops measured or None) from pitloss.json: this track's figure, else what a stop usually
+    costs across tracks (stops None). F1 only: an F2 pit lane isn't timed the same."""
+    if session.get("formula", 0) != 0:
+        return None
+    if not _table:
+        try:
+            _table.append(json.loads(TABLE.read_text()))
+        except (OSError, ValueError) as e:
+            _log.error("couldn't read the shipped pit losses", exc=False, error=str(e))
+            _table.append({"tracks": {}, "usual": None})
+    t = _table[0]
+    here = t["tracks"].get(str(session["trackId"]))
+    if here:
+        return here["loss"], here["stops"]
+    return t["usual"] and (t["usual"], None)

@@ -6,8 +6,9 @@ from . import events, gaps, plans, tyres
 SETTLE = 20.0  # s of session time after first seeing a session that only baselines: a resumed save loads in stages
 
 
-def scan(b, mem, team=False):
-    """team: the pit wall owns the box-for-slicks and rain-plan calls (its run says them, or falls back to ours)."""
+def scan(b, mem, team=False, box=None):
+    """team: the pit wall owns the box-for-slicks and rain-plan calls (its run says them, or falls back to ours).
+    box: the lap the team plans to stop at the end of, this stint."""
     if not b.race or b.me >= MAX_CARS:
         return []
     now = b.now
@@ -20,7 +21,7 @@ def scan(b, mem, team=False):
     if lap != mem.get("lap"):
         if not first and lap > mem["lap"] and not b.s["safetyCarStatus"]:  # gaps and pace mean nothing behind the SC
             left = b.s["totalLaps"] - lap + 1
-            out += gaps.at_the_line(b, mem, lap) + tyres.at_the_line(b, left) + plans.fuel(b) + ([] if team else plans.rain(b, mem))
+            out += gaps.at_the_line(b, mem, lap) + tyres.at_the_line(b, left, box) + plans.fuel(b) + ([] if team else plans.rain(b, mem))
         mem["lap"] = lap
     said, fresh = mem.setdefault("said", set()), []
     for c in out:

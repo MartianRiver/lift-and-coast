@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CASES = ROOT / "evals" / "cases.toml"
 RESULTS = ROOT / "evals" / "results"
 JUDGE = "anthropic/claude-sonnet-5.5"
+JUDGE_TRIES = 2
 MAX_WORDS = 40  # mid-lap they can't take more; a case can allow more with max_words
 OFF_WORLD = re.compile(r"\b(the game|game says|game's|telemetry|the data|the brief)\b", re.I)
 
@@ -61,14 +62,18 @@ def judge(case, answer, model):
     checks += [(f"never{i + 1}", "NEVER", t) for i, t in enumerate(case.get("never", []))]
     prompt = JUDGE_PROMPT.format(facts=case["facts"].strip(), question=case["question"], answer=answer,
                                  checks="\n".join(f"- {cid} ({kind}): {text}" for cid, kind, text in checks))
-    out = []
-    stream(model, [{"role": "user", "content": prompt}], out.append, effort="medium", role="judge", why=case["id"])
-    text = "".join(out)
-    try:
-        # models sometimes escape apostrophes, which JSON doesn't allow
-        verdicts = json.loads(text[text.index("{"):text.rindex("}") + 1].replace("\\'", "'"))["checks"]
-    except (ValueError, KeyError) as e:
-        raise LLMError(f"judge reply wasn't the JSON asked for: {text[:200]!r}") from e
+    for attempt in range(JUDGE_TRIES):  # a reply that isn't JSON would count as a FAIL against the answer
+        out = []
+        stream(model, [{"role": "user", "content": prompt}], out.append, effort="medium", role="judge", why=case["id"])
+        text = "".join(out)
+        try:
+            # models sometimes escape apostrophes, which JSON doesn't allow
+            verdicts = json.loads(text[text.index("{"):text.rindex("}") + 1].replace("\\'", "'"))["checks"]
+            break
+        except (ValueError, KeyError) as e:
+            _log.warn("judge reply wasn't JSON", case=case["id"], attempt=attempt + 1, reply=text)
+            if attempt + 1 == JUDGE_TRIES:
+                raise LLMError(f"judge reply wasn't the JSON asked for: {text[:200]!r}") from e
     texts = {cid: text for cid, _, text in checks}
     return [{**v, "check": texts.get(v["id"], "?")} for v in verdicts]
 

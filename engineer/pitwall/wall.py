@@ -99,7 +99,7 @@ class PitWall:
             if not self.plans and not self.mem.get("planned"):
                 self.mem["planned"] = True
                 self._add([self._first(b, lap)])
-            box = self.box if self._box_stops == b.my["numPitStops"] else None
+            box = self.planned_box(b)
             self._add(triggers.scan(b, self.mem, box))
             if self._last and not self.pending and (lap - self._last[1] >= HEARTBEAT[0] or now - self._last[0] >= HEARTBEAT[1]):
                 self._add([triggers.reason(("routine", lap), "routine check: nothing has called the team for a while")])
@@ -352,9 +352,13 @@ class PitWall:
             b = Race(self.state)
             if not b.my or b.me >= MAX_CARS:
                 return 0, None
-            box = self.box if self._box_stops == b.my["numPitStops"] else None
+            box = self.planned_box(b)
             got = b.race and box and triggers.tyre_target(b, box)  # to the flag is in the brief already
             return b.my["currentLapNum"], got and strategy.target_text(*got)
+
+    def planned_box(self, b):
+        """The lap the team plans to stop at the end of, or None: a planned stop belongs to the stint it was made in."""
+        return self.box if self._box_stops == b.my["numPitStops"] else None
 
     def glance(self):
         """For the Race tab: the active plan and the team's latest call."""

@@ -10,7 +10,8 @@ OVERWEAR_MIN = 0.5          # %/lap beyond the field, so a tiny rate early on do
 FLAG_WEAR = (60, 75)        # % projected at the flag: said again as it crosses each
 
 
-def at_the_line(b, left):
+def at_the_line(b, left, box=None):
+    """box: the lap the team plans to stop at the end of this stint, if it has one."""
     out, stops = [], b.my["numPitStops"]
     worn = strategy.worn_in(b)
     if worn and worn[1] is not None and worn[1] <= LIFE_CALL and worn[1] < left:
@@ -21,9 +22,9 @@ def at_the_line(b, left):
         worst = max(range(4), key=lambda i: w[i])
         if w[worst] - (sum(w) - w[worst]) / 3 >= UNEVEN:
             out.append(call(("limit", stops, worst), "tyres", NORMAL, lambda b, i=worst: _worn(b, i), ttl=60))
-    level = _overwear_level(b)
+    level = _overwear_level(b, box)
     if level and left >= 3:
-        out.append(call(("overwear", stops, level), "tyres", NORMAL, _overwear, ttl=60))
+        out.append(call(("overwear", stops, level), "tyres", NORMAL, lambda b, box=box: _overwear(b, box), ttl=60))
     if left >= 3:
         for n in _grip_gone(b):
             out.append(call(("grip", stops, n), "tyres", NORMAL, lambda b, n=n: _grip(b, n), ttl=60))
@@ -65,28 +66,29 @@ def _overwear_numbers(b):
     return i, mine[i], field[i], [n for n, _, _ in hot]
 
 
-def _overwear_level(b):
+def _overwear_level(b, box=None):
     """Steps of how far over the field and how bad the flag looks; a new step is a new call."""
     got = _overwear_numbers(b)
     if not got:
         return None
-    flag = _at_flag(b, got[0], got[1])
+    flag = _at_flag(b, got[0], got[1], box)
     return sum(got[1] >= t * got[2] for t in OVERWEAR), sum(flag >= t for t in FLAG_WEAR) if flag else 0
 
 
-def _at_flag(b, i, rate):
-    """None while a second compound is owed: this set won't see the flag."""
+def _at_flag(b, i, rate, box=None):
+    """None while a second compound is owed or the team plans a stop before the flag: this set won't see it."""
     dmg = b.damage()
-    return dmg and not strategy.stop_owed(b) and dmg["tyresWear"][i] + rate * (b.laps_left() + 1)
+    stopping = box is not None and b.my["currentLapNum"] <= box < b.s["totalLaps"]
+    return dmg and not stopping and not strategy.stop_owed(b) and dmg["tyresWear"][i] + rate * (b.laps_left() + 1)
 
 
-def _overwear(b):
+def _overwear(b, box=None):
     got = _overwear_numbers(b)
     if not got:
         return None
     i, mine, field, worst = got
     text = f"{corner(i)}'s wearing {mine / field:.1f} times the field's rate."
-    flag = _at_flag(b, i, mine)
+    flag = _at_flag(b, i, mine, box)
     if flag:
         text += f" About {flag:.0f}% by the flag."
     if worst:
