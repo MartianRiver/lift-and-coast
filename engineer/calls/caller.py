@@ -13,13 +13,13 @@ from collections import deque
 from .. import log, radiolog, usage
 from ..race import Race, ready
 from ..spec import MAX_CARS
-from .common import CORNERS, LOW, NORMAL, URGENT
+from .common import CORNERS, GROUP, GROUPS, LOW, NORMAL, URGENT
 from .scan import scan
 
 _log = log.get("calls")
 
-# "less chat" / "more info": how low-priority a call may be and still be made
-LEVELS = {"quiet": URGENT, "normal": NORMAL, "chatty": LOW}
+# "less chat" / "more info", and Settings: how low-priority a call may be and still be made
+LEVELS = {"chatty": LOW, "normal": NORMAL, "quiet": URGENT, "off": URGENT - 1}
 WORDS = (("quiet", r"\b(less (chat|chatter|talk|info)|quiet|only the (important|essentials)|just the important|shush|shut up)\b"),
          ("chatty", r"\b(more (chat|chatter|talk|info)|talk to me|keep me (posted|updated|informed))\b"),
          ("normal", r"\b(normal|usual|default) (chat|chatter|talk|info|level)\b"))
@@ -44,6 +44,7 @@ class Caller:
         self.sent = deque(maxlen=30)
         self._n = 0
         self.level = "normal"
+        self.topics = set(GROUPS)  # the groups switched on
         self._reset(None)
 
     def _reset(self, uid):
@@ -110,7 +111,7 @@ class Caller:
             pushed, self._pushed = self._pushed, []
             if any(c["topic"] == "team" for c in pushed):  # the team's newest call replaces one still waiting
                 self.queue = [c for c in self.queue if c["topic"] != "team"]
-            self.queue += [{**c, "at": now} for c in found if c["prio"] <= top] + [{**c, "at": now} for c in pushed]
+            self.queue += [{**c, "at": now} for c in found + pushed if c["prio"] <= top and GROUP[c["topic"]] in self.topics]
             # out of a pause, the packet that moves the clock lands before that moment's events (a retirement,
             # the session's end): give them a look before saying anything
             jumped = self._last_now is not None and now - self._last_now > JUMP

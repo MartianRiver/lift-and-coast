@@ -4,6 +4,7 @@ import * as Race from './race.js';
 import * as Diag from './diagnostics.js';
 import * as Wall from './pitwall.js';
 import * as Driver from './driver.js';
+import * as Settings from './settings.js';
 
 const POLL_MS = 250;
 const $ = (s) => document.querySelector(s);
@@ -156,6 +157,14 @@ function render() {
     if (!view.querySelector('#radio')) {
       view.innerHTML = Radio.markup();
       Radio.update();
+    }
+    return;
+  }
+  if (ui.tab === 'settings') {
+    // mounted once: it has inputs, and it only changes when you change something
+    if (!view.querySelector('#settings')) {
+      view.innerHTML = Settings.markup();
+      Settings.load();
     }
     return;
   }

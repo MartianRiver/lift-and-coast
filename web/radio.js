@@ -260,6 +260,7 @@ function onTabClick(e) {
 // ------------------------------------------------------------------ tab
 
 export const feed = () => ({ messages, replies, calls, radio, streamUp });
+export const pad = () => ({ names, buttons });
 export function watch(fn) { watchers.push(fn); }
 
 
