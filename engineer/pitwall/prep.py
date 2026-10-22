@@ -268,6 +268,9 @@ def _pit(db, last):
     here = tracks.get(last["track"], {}).get("green")
     if here:
         return [f"PIT    a green-flag stop costs {median(here):.1f}s here ({len(here)} stops measured)"]
+    usual = pitstops.usual({"trackId": last["track_id"], "formula": last["formula"]})
+    if usual and usual[1]:
+        return [f"PIT    a green-flag stop costs ≈{usual[0]:.1f}s here: a rule of thumb, {usual[1]} stops measured in F1 25, none in his races"]
     rest = {t: median(v["green"]) for t, v in tracks.items() if v["green"]}
     if not rest:
         return ["PIT    no stop measured anywhere yet"]

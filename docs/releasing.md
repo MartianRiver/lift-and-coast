@@ -39,7 +39,7 @@ When everything listed for the version in [ROADMAP.md](../ROADMAP.md) is on `nex
 4. What the engineer would say across the recorded races (the brief at set laps, every unprompted call) is compared with the last release, and every difference is one that was meant: `dev snapshot` on each version, then `dev snapshot --diff`.
 5. The evals, three times each: no case does worse than it did for the last release.
 6. A full race weekend on `next` (practice, qualifying, race prep, race) with the voice on, and the radio log and debug bundle from it look right.
-7. The README, `docs/architecture.md`, the roadmap and the changelog match the code; the version is bumped in `pyproject.toml` and `uv.lock`.
+7. The README, `docs/architecture.md`, the roadmap and the changelog match the code; the version is bumped in `pyproject.toml` and `uv.lock`, and `engineer/pitloss.json` is rebuilt from the races recorded since (`dev pits --write`).
 
 Then merge `next` into `main`, and make the release on GitHub with the changelog entry as its notes.
 

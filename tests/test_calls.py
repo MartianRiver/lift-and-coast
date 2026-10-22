@@ -137,6 +137,35 @@ class Overwear(unittest.TestCase):
         self.assertFalse(tyres._at_flag(brazil(), 1, 4.5))  # this set comes off at the stop
         self.assertEqual(tyres._at_flag(brazil(run=(SOFT,)), 1, 4.5), 50 + 4.5 * 13)
 
+    def test_no_flag_projection_with_the_teams_stop_still_to_come(self):
+        b = brazil(run=(SOFT,))  # L13 of 25, rule met: a second stop
+        self.assertFalse(tyres._at_flag(b, 1, 4.5, box=14))
+        self.assertFalse(tyres._at_flag(b, 1, 4.5, box=13))  # end of this lap
+        self.assertEqual(tyres._at_flag(b, 1, 4.5, box=12), 50 + 4.5 * 13)  # the planned lap went by: he stayed out
+        self.assertEqual(tyres._at_flag(b, 1, 4.5, box=25), 50 + 4.5 * 13)  # "the end of the last lap" isn't a stop
+
+    def test_the_overwear_call_says_no_flag_figure_before_the_teams_stop(self):
+        b = brazil(run=(SOFT,))
+        with patch.object(tyres, "_overwear_numbers", return_value=(1, 4.5, 2.0, None)), \
+                patch.object(tyres.strategy, "worn_in", return_value=None), patch.object(tyres, "_grip_gone", return_value=[]):
+            said = {box: next(c for c in tyres.at_the_line(b, 12, box) if c["key"][0] == "overwear")["text"](b) for box in (None, 14)}
+        self.assertEqual(said, {None: "Rear-right's wearing 2.2 times the field's rate. About 108% by the flag.",
+                                14: "Rear-right's wearing 2.2 times the field's rate."})
+
+    def test_the_scan_hands_the_tyre_calls_the_teams_stop(self):
+        b = Race(raced(4).st)
+        mem = {"t0": b.now - SETTLE - 1, "lap": b.my["currentLapNum"] - 1}  # settled, and a new lap just started
+        with patch.object(tyres, "at_the_line", return_value=[]) as line:
+            scan(b, mem, box=14)
+        self.assertEqual(line.call_args.args[2], 14)
+
+    def test_the_caller_hands_the_scan_the_teams_stop(self):
+        c = Caller(raced(3).st, Hub())
+        c.box = lambda b: 14
+        with patch.object(caller_mod, "scan", return_value=[]) as found:
+            c.step()
+        self.assertEqual(found.call_args.args[3], 14)
+
 
 class Settling(unittest.TestCase):
     def test_weather_still_loading_on_a_resume_is_not_new_rain(self):

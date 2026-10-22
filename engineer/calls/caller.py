@@ -39,6 +39,7 @@ class Caller:
         self.state, self.hub, self.busy, self.said = state, hub, busy, said
         self.scan = scan     # False: only say what's pushed (the team's calls), nothing of our own
         self.team = False    # the pit wall owns the strategy calls
+        self.box = lambda b: None  # the team's planned stop this stint
         self.at = at  # fn -> usage.where(): record delivery timings (live only, not replays)
         self.sent = deque(maxlen=30)
         self._n = 0
@@ -105,7 +106,7 @@ class Caller:
                 self.queue.clear()
                 self._last_out = now
             top = LEVELS[self.level]
-            found = scan(b, self.mem, self.team) if self.scan else []
+            found = scan(b, self.mem, self.team, self.box(b)) if self.scan else []
             pushed, self._pushed = self._pushed, []
             if any(c["topic"] == "team" for c in pushed):  # the team's newest call replaces one still waiting
                 self.queue = [c for c in self.queue if c["topic"] != "team"]

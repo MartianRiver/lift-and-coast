@@ -13,12 +13,11 @@ What I'm working on and what I'd like to get to, grouped by the version it's mea
 - **Radio for videos.** Your radio and the engineer's for a stretch of a race, as audio tracks that start at a moment you can find in the footage (lights out, a lap line), with subtitles. Optionally with your own lines re-voiced. The recording side and the race's timeline are done.
 - **Engineer personalities.** A handful to choose from in the settings, each with a few lines on how it talks: blunt and to the point, and it pushes back on a call it thinks is wrong; calm and steady; numbers first; quiet unless it matters. Each one comes with a voice that suits it and a default for how much it says unprompted, and the unprompted calls are worded in its style too. Only the way things are said changes: the numbers and the strategy calls stay the same, and every personality has to pass the model check before it's offered. They're styles, not impressions of real engineers. Moved from 0.5: a personality is a set of prompts, so they come with the prompt versions.
 - **What can I ask you?** Ask it on the radio and it tells you, briefly, the kinds of questions it's good at. Mostly for the first few races.
-- **The radio on Windows and Linux.** Speech recognition and the voice run on MLX today, so the radio only works on an Apple Silicon Mac. Windows and Linux need a local speech model and voice of their own, downloaded by the setup like the Mac's.
 - **A model check.** Run any model against moments from real races, scored on what it said, how quickly it started talking and what it cost, next to the recommended one. The cases ship with the repo, so it works before you've recorded anything.
 - **Cost per race weekend** for each model and setting, worked out from how often each part actually runs in a weekend and what each call costs.
 - **Recommended models,** chosen by a stated rule from the model check, updated each release.
 - **A sample race to download,** so the dev tools work without recording your own first.
-- Checking it properly on Windows and Linux, and wheel buttons for the radio, not just the controller.
+- Wheel buttons for the radio, not just the controller.
 
 ## 0.4: strategy that knows the pace
 
@@ -28,6 +27,7 @@ What I'm working on and what I'd like to get to, grouped by the version it's mea
 - **The out-lap call.** After your own stop: where you came out and who's around you, on what tyres.
 - **Who still has to stop.** The order once everyone has made their stops, from each car's stint history, so a car ahead that hasn't stopped yet isn't treated as a car you need to pass.
 - **Penalties in the sums.** Your own time penalty in the stop cost and the gap at the flag, and other cars' penalties in the timing.
+- **The radio on Windows and Linux.** Speech recognition and the voice run on MLX today, so the radio only works on an Apple Silicon Mac. Windows and Linux need a local speech model and voice of their own, downloaded by the setup like the Mac's, and checking it properly on both. Moved from 0.3: I race on a Mac and an Xbox, so I couldn't put it through real races before that release.
 
 ## 0.5: qualifying and the rest
 

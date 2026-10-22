@@ -1,0 +1,40 @@
+{
+ "tracks": {
+  "6": {
+   "track": "Montreal",
+   "loss": 18.5,
+   "stops": 1
+  },
+  "17": {
+   "track": "Austria",
+   "loss": 19.5,
+   "stops": 20
+  },
+  "26": {
+   "track": "Zandvoort",
+   "loss": 20.9,
+   "stops": 28
+  },
+  "16": {
+   "track": "Brazil",
+   "loss": 20.8,
+   "stops": 35
+  },
+  "31": {
+   "track": "Las Vegas",
+   "loss": 17.6,
+   "stops": 20
+  },
+  "14": {
+   "track": "Abu Dhabi",
+   "loss": 21.5,
+   "stops": 20
+  },
+  "0": {
+   "track": "Melbourne",
+   "loss": 20.3,
+   "stops": 19
+  }
+ },
+ "usual": 20.3
+}

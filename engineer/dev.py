@@ -7,7 +7,7 @@ and without touching the live server.
     uv run python -m engineer.dev serve 4 --lap 13 [--play 1]   # dashboard + engineer on :8078
     uv run python -m engineer.dev calls 4 [--lap 20]            # every unprompted call the engineer would have made
     uv run python -m engineer.dev radio [--last 20]              # radio messages: transcript, reply (or why none), clip
-    uv run python -m engineer.dev pits                           # what a stop costs at each track, from every archived race
+    uv run python -m engineer.dev pits [--write]                 # what a stop costs at each track, from every archived race; --write ships it
     uv run python -m engineer.dev prep [--run]                   # the race plan before the race loads (fuel, start tyre, stops)
     uv run python -m engineer.dev triggers 8                     # when the pit wall would run over a race, and why (no models)
     uv run python -m engineer.dev snapshot out/next [--only 35,40]   # briefs + calls over every race; --diff A B compares two
@@ -18,6 +18,7 @@ debug bundle's zip (any part of it).
 --lap N stops when you start lap N (plus --into seconds); --at S is seconds into the session.
 """
 import argparse
+import json
 import threading
 import time
 from pathlib import Path
@@ -247,11 +248,15 @@ def cmd_radio(args):
             print(f"{'':16}   {radiolog.CLIPS / m['clip']}")
 
 
-def cmd_pits(_args):
+def cmd_pits(args):
     from statistics import median
 
     from . import pitstops
 
+    if args.write:
+        t = pitstops.table(archive.connect())
+        pitstops.TABLE.write_text(json.dumps(t, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+        return print(f"{len(t['tracks'])} tracks, usual {t['usual']}s → {pitstops.TABLE}")
     tracks = pitstops.by_track(archive.connect())
     if not tracks:
         return print("no races in the archive yet")
@@ -259,7 +264,7 @@ def cmd_pits(_args):
         g = t["green"]
         parts = [f"green-flag stop {median(g):.1f}s ({len(g)} stop{"s" * (len(g) != 1)}, {min(g):.1f}–{max(g):.1f})"] if g else []
         # an SC stop measured against green laps isn't what it costs under the SC: count them only
-        parts += [f"{len(t[k])} {k} stop{'s' * (len(t[k]) != 1)} kept apart" for k in ("sc", "weather") if t[k]]
+        parts += [f"{len(t[k])} {k} stop{'s' * (len(t[k]) != 1)} kept apart" for k in ("sc", "weather", "wet") if t[k]]
         print(f"{track:<14} {' · '.join(parts) or 'no stops measured'}  [{t['races']} race{'s' * (t['races'] != 1)} with green-flag stops]")
 
 
@@ -313,7 +318,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("sessions")
     sub.add_parser("radio").add_argument("--last", type=int, default=20)
-    sub.add_parser("pits")
+    sub.add_parser("pits").add_argument("--write", action="store_true", help="rebuild engineer/pitloss.json from the archive")
     p = sub.add_parser("snapshot", help="the brief every few laps and every call, over every recorded race")
     p.add_argument("folder", nargs="+", help="where to write it, or with --diff the two folders to compare")
     p.add_argument("--only", help="archive ids, comma-separated")

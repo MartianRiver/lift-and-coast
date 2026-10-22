@@ -1,7 +1,10 @@
 """Pit loss per track from the archive: which laps are the stop, and which stops count as green-flag."""
 import json
 import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 from engineer import archive, calc, pitstops
 
@@ -78,6 +81,24 @@ class Archive(unittest.TestCase):
         self.race("1", "2026-10-14 10:00", [(times({9: 2000, 10: 17000}), [[8, "Medium"], [255, "Inter"]])])
         self.assertEqual(pitstops.measure(self.db, "1")[0]["kind"], "weather")
 
+    def test_inters_for_fresh_inters_is_not_a_green_flag_sample(self):
+        # Silverstone #15: a lap either side on a wet track isn't what a dry stop costs
+        self.race("1", "2026-10-14 10:00", [(times({9: 2000, 10: 17000}), [[8, "Inter"], [255, "Inter"]])])
+        self.assertEqual(pitstops.measure(self.db, "1")[0]["kind"], "wet")
+
+    def test_the_shipped_table_is_each_f1_tracks_median_and_the_median_of_those(self):
+        stop = lambda out: (times({9: 2000, 10: out}), [[8, "Medium"], [255, "Hard"]])
+        self.race("1", "2026-10-14 10:00", [stop(17000), stop(19000)])  # Spa 19, 21
+        self.race("2", "2026-10-14 11:00", [stop(15000)], track_id=7)  # 17
+        self.race("3", "2026-10-14 12:00", [stop(25000)], track_id=4)  # 27: an F2 race
+        self.db.execute("update sessions set formula = 2, track = 'Barcelona' where uid = '3'")
+        self.db.execute("update sessions set track = 'Silverstone' where uid = '2'")
+        self.race("4", "2026-10-14 13:00", [(times({9: 2000, 10: 17000}), [[8, "Wet"], [255, "Inter"]])], track_id=9)
+        t = pitstops.table(self.db)
+        self.assertEqual(t["tracks"], {"10": {"track": "Spa", "loss": 20.0, "stops": 2}, "7": {"track": "Silverstone", "loss": 17.0, "stops": 1}})
+        self.assertEqual(t["usual"], 18.5)
+        self.assertEqual(pitstops.table(sqlite_empty()), {"tracks": {}, "usual": None})
+
     def test_a_resumed_save_counts_each_stop_once_and_only_earlier_races(self):
         stop = (times({9: 2000, 10: 17000}), [[8, "Medium"], [255, "Hard"]])
         self.race("1", "2026-10-14 10:00", [stop])
@@ -87,6 +108,31 @@ class Archive(unittest.TestCase):
         self.assertEqual((sorted(t["green"]), t["races"]), ([19.0, 23.0], 2))
         t = pitstops.by_track(self.db, track_id=10, before="2026-10-14 11:00")["Spa"]
         self.assertEqual(t["green"], [19.0])
+
+
+def sqlite_empty():
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.executescript(archive.SCHEMA)
+    return db
+
+
+class Shipped(unittest.TestCase):
+    def setUp(self):
+        table = Path(tempfile.mkdtemp(prefix="re-pitloss-")) / "pitloss.json"
+        table.write_text(json.dumps({"tracks": {"14": {"track": "Abu Dhabi", "loss": 21.5, "stops": 20}}, "usual": 20.3}))
+        for patch in (mock.patch.object(pitstops, "TABLE", table), mock.patch.object(pitstops, "_table", [])):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_this_tracks_figure_else_the_usual_one(self):
+        self.assertEqual(pitstops.usual({"trackId": 14, "formula": 0}), (21.5, 20))
+        self.assertEqual(pitstops.usual({"trackId": 7, "formula": 0}), (20.3, None))
+        self.assertIsNone(pitstops.usual({"trackId": 14, "formula": 2}))  # F2
+
+    def test_no_table_no_figure(self):
+        pitstops.TABLE.unlink()
+        self.assertIsNone(pitstops.usual({"trackId": 14, "formula": 0}))
 
 
 if __name__ == "__main__":

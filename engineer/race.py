@@ -98,14 +98,20 @@ class Race:
 
     def loss(self):
         """(seconds a green-flag stop costs, where that comes from): this race's stops once there are
-        two, else earlier races at this track, else this race's one stop."""
+        two, else earlier races at this track, else this race's one stop, else the shipped figure."""
         live, past = calc.pit_loss(self.st.laps, self.st.history), pitstops.here(self.s)
         before = past and f"over {plural(past[1], 'stop')} in {plural(past[2], 'earlier race')} here"
         if live and (live[1] >= 2 or not past):
             return live[0], f"from {plural(live[1], 'stop')} this race" + (f"; {past[0]:.1f}s {before}" if past else "")
         if past:
             return past[0], before + (f"; the 1 stop this race said {live[0]:.1f}s" if live else ", none this race yet")
-        return None
+        status = self.status()
+        usual = status and status["visualTyreCompound"] in calc.DRY and pitstops.usual(self.s)  # a dry figure: stops on a wet track have cost more
+        if not usual:
+            return None
+        if usual[1]:
+            return usual[0], f"a rule of thumb: what a stop here usually costs in F1 25, {plural(usual[1], 'stop')} measured; none seen in your races yet"
+        return usual[0], "a rule of thumb: what a stop usually costs in F1 25; none measured at this track"
 
     def at_flag(self, g):
         """Where a gap goes at last lap's rate: ("closes", laps until it does, laps left) or ("gap", s at the flag, laps left)."""

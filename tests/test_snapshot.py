@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from engineer import archive, capture, snapshot
+from engineer import archive, capture, pitstops, snapshot
 
 from .test_brief import Race, line_time
 
@@ -52,7 +52,8 @@ class Snapshot(unittest.TestCase):
     def test_every_race_in_the_archive_gets_its_file(self):
         tmp = Path(tempfile.mkdtemp())
         for p in [mock.patch.object(archive, "DATA", tmp), mock.patch.object(archive, "DB", tmp / "a.db"),
-                  mock.patch.object(archive, "SESSIONS", tmp / "sessions")]:
+                  mock.patch.object(archive, "SESSIONS", tmp / "sessions"),
+                  mock.patch.object(pitstops, "_table", [])]:  # the shipped figures, as the workers read them
             p.start()
             self.addCleanup(p.stop)
         race = packets(7)

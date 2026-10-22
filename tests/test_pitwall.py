@@ -319,6 +319,19 @@ class Prep(unittest.TestCase):
         self.assertIn("+1.7 covers it", wet[-1])  # 10 laps at -0.10 instead of -0.02
 
 
+    def test_pit_loss_shipped_for_a_track_he_hasnt_raced(self):
+        from engineer.pitwall import prep
+        last = {"track": "Abu Dhabi", "track_id": 14, "formula": 0}
+        with mock.patch.object(prep.pitstops, "by_track", return_value={}), \
+                mock.patch.object(prep.pitstops, "usual", return_value=(21.5, 20)):
+            self.assertEqual(prep._pit(None, last), ["PIT    a green-flag stop costs ≈21.5s here: a rule of thumb, 20 stops measured in F1 25, none in his races"])
+        with mock.patch.object(prep.pitstops, "by_track", return_value={}), \
+                mock.patch.object(prep.pitstops, "usual", return_value=(20.3, None)):
+            self.assertEqual(prep._pit(None, last), ["PIT    no stop measured anywhere yet"])  # the usual figure is the brief's job
+        with mock.patch.object(prep.pitstops, "by_track", return_value={"Abu Dhabi": {"green": [20.0, 23.0]}}):
+            self.assertIn("21.5s here (2 stops measured)", prep._pit(None, last)[0])
+
+
 class Section(unittest.TestCase):
     def test_fresh_call_and_a_disagreement(self):
         w = _wall()
