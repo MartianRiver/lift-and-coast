@@ -3,7 +3,7 @@ import importlib.util
 import time
 from dataclasses import dataclass
 
-from . import driver, log, quick, radiolog, usage, view
+from . import driver, log, prompts, quick, radiolog, usage, view
 from .calls import NORMAL, URGENT, Caller
 from .calls.common import call
 from .engineer import DEFAULT_MODEL, FALLBACK, Engineer
@@ -53,6 +53,8 @@ class Crew:
                 self.radio.mode = cfg.get("radioMode")
                 if self.hub:
                     self.hub.publish("radio", self.radio.snapshot())
+            elif key == "prompts":
+                prompts.use(v)
             elif SPECS[key].restart:
                 later[key] = "on the next start"
         if keys:

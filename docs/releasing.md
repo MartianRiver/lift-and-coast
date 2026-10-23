@@ -26,6 +26,7 @@ git checkout v0.1.0 && uv sync      # go back from a newer one
 ## What's kept in captures/ across versions
 
 - Recordings are the raw packets the game sent, so every version can read every recording.
+- A prompt that's been in a release never changes: `engineer/prompts/<role>/v1.md` stays as it was, and a change is the next file, `v2.md`, with a line on why at the top (the repo's checks refuse an edit to a released one). Your own versions in `captures/prompts/` are never touched, and one you're using stays in use when a new version ships; the Prompts page says it's out and shows what changed.
 - The archive database only ever gains tables and columns; nothing is renamed or dropped, so an older version can still open a newer database. From 0.2 it carries a schema version, and each version upgrades it in small steps on start. Paths to the recordings stay absolute, because 0.1 reads them as they are; each version points them at the files where they are now when it opens the database. The catalogue tables can be rebuilt from the recordings (`archive reindex`); what models cost, the timings and the strategy team's notes can't, so nothing is allowed to throw them away.
 - A change that can't keep to this makes the next version a 0.x.0, and its notes say what to do.
 

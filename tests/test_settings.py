@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from engineer import calls, llm, models
+from engineer import calls, llm, models, prompts
 from engineer.calls import Caller
 from engineer.calls.common import GROUP
 from engineer.crew import Crew
@@ -75,7 +75,8 @@ class Saving(unittest.TestCase):
             s.set({"engineerModel": "other/model"})
         s = store()
         for bad in ({"budget": 0}, {"budget": 51}, {"engineerModel": "has spaces"}, {"voice": "robot"},
-                    {"radioButton": "Nose Button"}, {"topics": {"gossip": True}}, {"radioFx": "yes"}, {"nope": 1}):
+                    {"radioButton": "Nose Button"}, {"topics": {"gossip": True}}, {"radioFx": "yes"}, {"nope": 1},
+                    {"prompts": {"lead": "v9"}}):
             with self.assertRaises(ValueError):
                 s.set({"calls": "quiet", **bad})
         with self.assertRaises(ValueError):
@@ -102,11 +103,12 @@ class Applying(unittest.TestCase):
         hub = SimpleNamespace(sent=[], publish=lambda kind, data: hub.sent.append(kind))
         return Crew(eng, radio, speaker, caller, wall, hub)
 
+    @patch.dict(prompts._using, clear=True)
     def test_each_change_reaches_what_is_running(self):
         crew, s = self.crew(), store()
         s.set({"engineerModel": "x/eng", "engineerFallback": "", "lead": "x/lead", "second": "", "budget": 4,
                "calls": "off", "topics": {"gaps": False}, "radioButton": "Left Stick Click", "quickButton": "3",
-               "radioMode": "toggle", "voice": "kokoro:bf_emma", "radioFx": True})
+               "radioMode": "toggle", "voice": "kokoro:bf_emma", "radioFx": True, "prompts": {"lead": "v1"}})
         self.assertEqual(crew.apply(s, [k for k in SPECS if k != "audioOut"]), {})
         self.assertEqual((crew.engineer.model, crew.engineer.fallback), ("x/eng", None))
         self.assertEqual((crew.wall.models, crew.wall.budget), (("x/lead",), 4.0))
@@ -116,6 +118,7 @@ class Applying(unittest.TestCase):
         self.assertEqual((crew.radio.trigger, crew.radio.quick, crew.radio.mode), (button("Left Stick Click"), button("3"), "toggle"))
         self.assertIn("radio", crew.hub.sent)
         self.assertEqual((crew.speaker.voice.voice, crew.speaker.voice.fx), ("bf_emma", True))
+        self.assertEqual(prompts._using, {"lead": "v1"})
 
     def test_another_voice_engine_or_device_waits_for_a_restart(self):
         crew, s = self.crew(), store()

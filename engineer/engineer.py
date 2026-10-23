@@ -8,9 +8,8 @@ import re
 import threading
 import time
 from collections import deque
-from pathlib import Path
 
-from . import brief, driver, log, numbers, radiolog, usage
+from . import brief, driver, log, numbers, prompts, radiolog, usage
 from .llm import LLMError, api_key, stream
 
 _log = log.get("engineer")
@@ -35,9 +34,6 @@ CHECKING = "Copy, checking."
 UNSURE = "Can't give you a solid number on that one."  # said when every sentence of a reply was held back
 LOST = "Lost the data on that one, ask me again."  # neither model answered
 SENTENCE = re.compile(r"[.!?](?=\s)")  # "0.7" and "P1." at the end of a chunk don't count
-
-SYSTEM = (Path(__file__).resolve().parent / "prompts" / "engineer.md").read_text()  # the live brief follows it
-
 
 class Engineer:
     def __init__(self, hub, state, model=DEFAULT_MODEL, role="engineer", at=None, fallback=FALLBACK):
@@ -139,7 +135,8 @@ class Engineer:
 
         now = time.time()
         recent = [(q, a) for at, q, a in self._history if now - at <= HISTORY_SECS]
-        messages = prompt(data, _question(msg), recent)
+        reply["prompt"], rules = prompts.pick("engineer")
+        messages = prompt(data, _question(msg), recent, rules)
         _log.info("asking", model=self.model, question=msg["text"], brief_chars=len(data))
 
         spoken = ""  # streamed text not yet handed to the voice
@@ -168,7 +165,7 @@ class Engineer:
         for model in dict.fromkeys(m for m in (self.model, self.fallback) if m):
             try:
                 stats = stream(model, messages, on_text, role=self.role, at=self.at(),
-                               why="question" if model == self.model else "fallback", first_by=FIRST_WORD)
+                               why="question" if model == self.model else "fallback", first_by=FIRST_WORD, prompt=reply["prompt"])
                 break
             except LLMError as e:
                 _log.error("engineer call failed", exc=False, model=model, error=str(e), started=bool(reply["text"]))
@@ -200,13 +197,14 @@ class Engineer:
         reply.update(changes)
         if reply["status"] in ("done", "error"):
             self.replies.append(dict(reply))
-            radiolog.record("reply", {k: reply.get(k) for k in ("to", "status", "text", "held", "model", "error", "local", "firstMs", "at")})
+            radiolog.record("reply", {k: reply.get(k) for k in ("to", "status", "text", "held", "model", "prompt", "error", "local", "firstMs", "at")})
         self.hub.publish("reply", dict(reply))
 
 
-def prompt(data, question, history=()):
-    """What the model sees: the rules and the live brief, recent exchanges [(question or None, answer)], the question."""
-    out = [{"role": "system", "content": driver.words(SYSTEM) + data}]
+def prompt(data, question, history=(), rules=None):
+    """What the model sees: the rules (the prompt in use unless given) and the live brief, recent exchanges
+    [(question or None, answer)], the question."""
+    out = [{"role": "system", "content": driver.words(rules or prompts.text("engineer")) + data}]
     for q, a in history:
         out += ([{"role": "user", "content": q}] if q else []) + [{"role": "assistant", "content": a}]
     return out + [{"role": "user", "content": question}]

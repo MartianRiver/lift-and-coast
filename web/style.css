@@ -281,4 +281,12 @@ dialog .choice { display: inline-block; margin: 4px 14px 4px 0; }
 .check { display: inline-flex; gap: 4px; align-items: center; margin-right: 12px; }
 .set-topics { border: 0; padding: 0; margin: 8px 0 0; }
 .set-topics legend { padding: 0; margin-bottom: 2px; }
+.set-pages { margin-bottom: 14px; }
+#prompts > .seg { margin: 4px 0 8px; }
+.prompt-text { display: block; width: 100%; min-height: 50vh; box-sizing: border-box; margin: 6px 0; padding: 8px; resize: vertical;
+  font: 11px/1.45 var(--mono); background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; }
+.prompt-text[readonly] { color: var(--muted); }
+.prompt-new { border-top: 1px solid var(--warn); border-bottom: 1px solid var(--warn); padding: 6px 0 8px; margin: 8px 0; }
+.prompt-new p { margin: 0 0 6px; }
+pre.diff { font: 11px/1.4 var(--mono); white-space: pre-wrap; max-height: 40vh; overflow: auto; margin: 6px 0; }
 @media (max-width: 520px) { .set-row { grid-template-columns: 1fr; } .set-label { padding-top: 0; } }

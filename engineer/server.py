@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import archive, bundle, diagnostics, driver, llm, log, models, radiolog, usage, view
+from . import archive, bundle, diagnostics, driver, llm, log, models, prompts, radiolog, usage, view
 from .crew import assemble
 from .pitwall import BUDGET, MODELS, notes
 from .engineer import DEFAULT_MODEL, FALLBACK
@@ -189,6 +189,9 @@ def make_handler(state, listen, hub, crew, recorder=None, cfg=None, off=None):
                 if path == "/api/settings" and cfg:
                     later = crew.apply(cfg, cfg.set(body))
                     return self._json({**settings_view(cfg, crew, off), "later": later})
+                if path == "/api/prompts":
+                    saved = prompts.save(body["role"], body["text"], body["why"], body["from"])
+                    return self._json({"saved": saved, "prompts": prompts.view()})
                 if path == "/api/settings/hear":
                     if not speaker:
                         return self._json({"error": "the voice is off"}, 409)
@@ -220,6 +223,10 @@ def make_handler(state, listen, hub, crew, recorder=None, cfg=None, off=None):
                                        "fromGame": driver.from_game(view.player_identity(state))})
                 if url.path == "/api/settings" and cfg:
                     return self._json(settings_view(cfg, crew, off))
+                if url.path == "/api/prompts":
+                    return self._json(prompts.view())
+                if url.path == "/api/prompts/text":
+                    return self._json({"text": prompts.text(q["role"][0], q["id"][0])})
                 if url.path == "/api/models":
                     try:
                         return self._json(models.listing())
@@ -333,7 +340,7 @@ def main():
                     device=got["audioOut"], calls=not args.no_calls,
                     team=None if args.no_pitwall else [m for m in (got["lead"], got["second"]) if m], budget=got["budget"],
                     buttons={"trigger": got["radioButton"], "quick": got["quickButton"]}, fallback=got["engineerFallback"])
-    crew.apply(cfg, ["calls", "topics"])
+    crew.apply(cfg, ["calls", "topics", "prompts"])
     off = switched_off(args, crew)
     recorder = None if args.no_record else SessionRecorder()
     listen = {"ip": lan_ip(), "udpPort": args.udp_port, "recording": None,

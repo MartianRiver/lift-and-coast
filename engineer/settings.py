@@ -8,7 +8,7 @@ import json
 import threading
 from dataclasses import dataclass
 
-from . import archive, llm, log
+from . import archive, llm, log, prompts
 from .calls.caller import LEVELS
 from .calls.common import GROUPS
 from .engineer import DEFAULT_MODEL, FALLBACK
@@ -98,6 +98,7 @@ SPECS = {
     "radioMode": Spec("hold", _choice("hold", "toggle"), "--radio-mode"),
     "quickButton": Spec(QUICK, _button, "--quick-button", "RE_QUICK_BUTTON"),
     "audioOut": Spec(None, _device, "--audio-out", restart=True),
+    "prompts": Spec({}, prompts.check),  # {role: version}; a role left out uses the newest shipped one
 }
 
 

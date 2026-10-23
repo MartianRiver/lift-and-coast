@@ -35,12 +35,13 @@ All of it is in `captures/` (or wherever `RE_DATA_DIR` points), except your API 
 - `radio/`: every radio clip you recorded, what the engineer said back (text and audio), and a log of both;
 - `llm/`: every request sent to the models and the reply that came back, word for word, one file a day;
 - `logs/`: a log of each run: what it was doing, errors, and what you said on the radio as text;
-- `driver.json`, `settings.json`, `fixes.json`, `pitwall-brief.json`, `pitwall-prep.json`: your name and pronouns, what you set in the Settings tab, the speech-to-text corrections you taught it, your brief for the strategy team and the last race plan.
+- `driver.json`, `settings.json`, `fixes.json`, `pitwall-brief.json`, `pitwall-prep.json`: your name and pronouns, what you set in the Settings tab, the speech-to-text corrections you taught it, your brief for the strategy team and the last race plan;
+- `prompts/`: the versions of the prompts you edited on the Prompts page. Each model call in `llm/`, each answer in the radio log and each of the strategy team's notes says which prompt version it had.
 
 Deleting any of it is safe. Deleting `captures/` entirely starts you from scratch.
 
-## Debug bundles (coming in 0.2)
+## Debug bundles
 
-When something goes wrong, a debug bundle puts everything needed to understand it into one file: the session's telemetry, your radio clips and their transcripts, what was sent to the models and what came back, the log, and your setup (version, operating system, options, which models). It's made only when you ask for it, saved on your computer, and the app never uploads it anywhere. Before it's made you can leave out the audio or the telemetry, and the bundle lists everything inside it. It's saved in `captures/bundles/`, and the Diagnostics tab links to it. A long race comes out as two or three files, because GitHub takes up to 25 MB per attachment. Attaching it to a public issue makes everything in it public, including your voice and the name you gave the engineer, so leave out the audio if you'd rather.
+When something goes wrong, a debug bundle puts everything needed to understand it into one file: the session's telemetry, your radio clips and their transcripts, what was sent to the models and what came back, the log, and your setup (version, operating system, options, which models, your Settings and your own prompt versions). It's made only when you ask for it, saved on your computer, and the app never uploads it anywhere. Before it's made you can leave out the audio or the telemetry, and the bundle lists everything inside it. It's saved in `captures/bundles/`, and the Diagnostics tab links to it. A long race comes out as two or three files, because GitHub takes up to 25 MB per attachment. Attaching it to a public issue makes everything in it public, including your voice and the name you gave the engineer, so leave out the audio if you'd rather.
 
 It holds your voice, your name, whatever you said on the radio, and in online sessions other players' names. GitHub issues are public, so look through it before attaching it to one.

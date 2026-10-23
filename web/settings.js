@@ -1,6 +1,8 @@
 // Settings tab: the models, the voice, what's said unprompted and the radio buttons, from
 // /api/settings. Each change is saved and used straight away, unless its row says otherwise.
+// Its second page, the prompts, is prompts.js.
 import { esc } from './panels.js';
+import * as Prompts from './prompts.js';
 import * as Radio from './radio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -17,7 +19,14 @@ const ROLES = { engineerModel: 'engineer', engineerFallback: 'engineer', lead: '
 let data = null, error = null, list = null, listError = null, listAsked = false;
 const status = {}; // key -> [class, text] under its row
 
-export const markup = () => '<section id="settings" class="settings" aria-label="Settings"><p class="muted">Loading…</p></section>';
+let page = 'settings';
+
+export const markup = () => `<div class="settings">
+  <div class="seg set-pages" role="radiogroup" aria-label="Settings page">
+    <label><input type="radio" name="setPage" value="settings" ${page === 'settings' ? 'checked' : ''}><span>Settings</span></label>
+    <label><input type="radio" name="setPage" value="prompts" ${page === 'prompts' ? 'checked' : ''}><span>Prompts</span></label></div>
+  <section id="settings" aria-label="Settings" ${page === 'settings' ? '' : 'hidden'}><p class="muted">Loading…</p></section>
+  <div ${page === 'prompts' ? '' : 'hidden'} id="promptsPage">${Prompts.markup()}</div></div>`;
 
 export async function load() {
   try {
@@ -29,6 +38,7 @@ export async function load() {
   }
   render();
   if (!listAsked) loadList();
+  Prompts.load();
 }
 
 async function loadList() {
@@ -205,7 +215,14 @@ async function hear() {
   render();
 }
 
-document.addEventListener('change', (e) => { if (e.target instanceof Element && e.target.closest('#settings')) save(e); });
+document.addEventListener('change', (e) => {
+  if (!(e.target instanceof Element)) return;
+  if (e.target.name === 'setPage') {
+    page = e.target.value;
+    $('settings').hidden = page !== 'settings';
+    $('promptsPage').hidden = page !== 'prompts';
+  } else if (e.target.closest('#settings')) save(e);
+});
 document.addEventListener('click', (e) => {
   if (!(e.target instanceof Element)) return;
   if (e.target.id === 'setHear') hear();
