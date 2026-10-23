@@ -8,9 +8,8 @@ Times are session seconds, so a replay behaves like the live thing.
 import re
 import threading
 import time
-from pathlib import Path
 
-from .. import brief, driver, log, strategy, usage
+from .. import brief, driver, log, prompts, strategy, usage
 from ..llm import LLMError, api_key, stream
 from ..race import Race, ready
 from ..spec import MAX_CARS
@@ -25,8 +24,6 @@ HEARTBEAT = (5, 480)   # laps or s without a run before a routine check
 QUIET = 5.0            # s without packets: nothing's moving, nothing to run
 TICK = 1.0
 PIT_ENTRY = 0.85       # share of the lap after which a "box?" can't wait for the team
-PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
-LEAD, REVIEW, PREP = ((PROMPTS / f"{name}.md").read_text() for name in ("pitwall", "pitwall-review", "pitwall-prep"))
 BRIEF = "RIVER'S BRIEF FOR THIS RACE"
 HIS_CALL = ("RIVER'S OWN CALL (it stands until he stops or makes another: plan A follows it. To change it, push back in SAY "
             "with the number that shows it can't work, never switch it quietly)")
@@ -219,25 +216,26 @@ class PitWall:
                 raise LLMError(info)
             told = notes.read_brief()
             ask = driver.words(text) + (f"\n\n{driver.words(BRIEF)}\n  {told['text']}" if told else "") + "\n\nWrite the race plan."
-            messages = [{"role": "system", "content": driver.words(PREP)}, {"role": "user", "content": ask}]
-            raw, cost, ms = self._plan(messages)
+            version, rules = prompts.pick("prep")
+            messages = [{"role": "system", "content": driver.words(rules)}, {"role": "user", "content": ask}]
+            raw, cost, ms = self._plan(messages, version)
             wrong = prep.check(notes.lead(raw), info)
             if wrong:  # one more go, told what's wrong
                 _log.warn("race prep broke a rule", problem=wrong)
                 messages += [{"role": "assistant", "content": raw}, {"role": "user", "content": f"That plan doesn't work: {driver.words(wrong)}. Write the whole plan again."}]
-                raw, more, ms = self._plan(messages)
+                raw, more, ms = self._plan(messages, version)
                 cost = (cost or 0) + (more or 0)
             note = {"id": f"prep-{int(time.time())}", "who": "lead", "kind": "prep", "model": self.models[0], "at": time.time(),
                     "lap": 0, "stops": 0, "reasons": ["race prep, before the race loads"], "question": None,
-                    **notes.lead(raw), "text": raw, "cost": cost, "ms": ms}
+                    **notes.lead(raw), "text": raw, "cost": cost, "ms": ms, "prompt": version}
             review = None
             if len(self.models) > 1:
-                rout = []
-                rstats = stream(self.models[1], [{"role": "system", "content": driver.words(REVIEW)},
+                rout, (second, rules) = [], prompts.pick("second")
+                rstats = stream(self.models[1], [{"role": "system", "content": driver.words(rules)},
                                                  {"role": "user", "content": f"{ask}\n\nTHE LEAD STRATEGIST'S CALL\n{raw}"}],
-                                rout.append, role=self.role, at=usage.NOWHERE, why="pitwall: race prep review")
+                                rout.append, role=self.role, at=usage.NOWHERE, why="pitwall: race prep review", prompt=second)
                 agree, why = notes.review("".join(rout))
-                review = {"agree": agree, "text": why, "model": self.models[1], "cost": rstats.get("cost")}
+                review = {"agree": agree, "text": why, "model": self.models[1], "cost": rstats.get("cost"), "prompt": second}
             self.prep = {**info, "at": time.time(), "facts": text, "note": note, "review": review, "running": False, "error": None}
             prep.save({k: v for k, v in self.prep.items() if k not in ("running", "error")})
             _log.info("race prep", track=info["track"], fuel=note.get("fuel"), start=note.get("start"), call=note.get("call"))
@@ -246,9 +244,9 @@ class PitWall:
             self.prep = {**self.prep, "running": False, "error": str(e)}
         self.hub.publish("pitwall", {"prep": True})
 
-    def _plan(self, messages):
+    def _plan(self, messages, version):
         out = []
-        stats = stream(self.models[0], messages, out.append, role=self.role, at=usage.NOWHERE, why="pitwall: race prep")
+        stats = stream(self.models[0], messages, out.append, role=self.role, at=usage.NOWHERE, why="pitwall: race prep", prompt=version)
         return "".join(out).strip(), stats.get("cost"), stats.get("totalMs")
 
     # --- a run ----------------------------------------------------------------------
@@ -263,13 +261,16 @@ class PitWall:
         note = {"id": f"n{self._n}-{int(time.time())}", "who": "lead", "model": self.models[0], "at": time.time(),
                 "sessionTime": round(now, 1), "lap": lap, "stops": stops, "reasons": [r["text"] for r in reasons],
                 "question": question}
+        note["prompt"], rules = prompts.pick("lead")
         self.running = note
         self.hub.publish("pitwall", {"running": note})
-        messages = [{"role": "system", "content": driver.words(LEAD)}, {"role": "user", "content": self._input(data, reasons, lap, stops)}]
+        messages = [{"role": "system", "content": driver.words(rules)},
+                    {"role": "user", "content": self._input(data, reasons, lap, stops)}]
         _log.info("team run", reasons=note["reasons"], model=self.models[0])
         out = []
         try:
-            stats = stream(self.models[0], messages, out.append, role=self.role, at=self.at(), why="pitwall: " + reasons[0]["key"][0])
+            stats = stream(self.models[0], messages, out.append, role=self.role, at=self.at(), why="pitwall: " + reasons[0]["key"][0],
+                           prompt=note["prompt"])
         except LLMError as e:
             _log.error("team run failed", exc=False, error=str(e))
             self.running = None
@@ -290,11 +291,12 @@ class PitWall:
         return note
 
     def _review(self, data, lead):
-        messages = [{"role": "system", "content": driver.words(REVIEW)},
+        version, rules = prompts.pick("second")
+        messages = [{"role": "system", "content": driver.words(rules)},
                     {"role": "user", "content": f"{data}\n\nTHE LEAD STRATEGIST'S CALL\n{lead['text']}"}]
         out = []
         try:
-            stats = stream(self.models[1], messages, out.append, role=self.role, at=self.at(), why="pitwall review")
+            stats = stream(self.models[1], messages, out.append, role=self.role, at=self.at(), why="pitwall review", prompt=version)
         except LLMError as e:
             _log.error("review failed", exc=False, error=str(e))
             return
@@ -302,7 +304,7 @@ class PitWall:
         agree, why = notes.review(text)
         self._apply({"id": lead["id"] + "r", "who": "review", "of": lead["id"], "model": self.models[1], "at": time.time(),
                      "sessionTime": lead["sessionTime"], "lap": lead["lap"], "agree": agree, "text": why,
-                     "cost": stats.get("cost"), "ms": stats.get("totalMs")})
+                     "cost": stats.get("cost"), "ms": stats.get("totalMs"), "prompt": version})
 
     def _apply(self, note, publish=True):
         self.notes.append(note)

@@ -15,7 +15,7 @@ import time
 import tomllib
 from pathlib import Path
 
-from . import brief, dev, log
+from . import brief, dev, log, prompts
 from .engineer import DEFAULT_MODEL, prompt
 from .llm import LLMError, stream
 
@@ -29,7 +29,7 @@ JUDGE_TRIES = 2
 MAX_WORDS = 40  # mid-lap they can't take more; a case can allow more with max_words
 OFF_WORLD = re.compile(r"\b(the game|game says|game's|telemetry|the data|the brief)\b", re.I)
 
-JUDGE_PROMPT = (ROOT / "engineer" / "prompts" / "judge.md").read_text()
+JUDGE_PROMPT = prompts.text("judge", prompts.latest("judge"))
 
 
 def load_cases(only=None):

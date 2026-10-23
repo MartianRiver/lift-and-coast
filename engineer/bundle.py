@@ -21,7 +21,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from . import archive, capture, log, radiolog
+from . import archive, capture, log, prompts, radiolog
 from .version import VERSION
 
 _log = log.get("bundle")
@@ -31,7 +31,7 @@ LIMIT = 24_000_000  # GitHub takes 25 MB per attached file
 PIECE = 20_000_000  # compressed recording per part, leaving room for the rest
 HEAD = 29  # packet header; lap history and tyre sets carry their car's index right after it
 MOTION, REPEATS = 0, {11, 12}
-SETUP = ("driver.json", "fixes.json", "pitwall-prep.json", "pitwall-brief.json")
+SETUP = ("driver.json", "fixes.json", "pitwall-prep.json", "pitwall-brief.json", "settings.json")
 AFTER = 120  # s past the recording's end that a reply, a spoken line or a log line still belongs to it
 
 
@@ -173,6 +173,7 @@ def make(uid, lap=None, note="", audio=True, telemetry=True, live=None, out=None
         logs = run_logs(spans, archive.DATA / "logs")
         items += [(f"logs/{p.name}", p) for p in logs]
         items += [(f"setup/{s}", archive.DATA / s) for s in SETUP if (archive.DATA / s).exists()]
+        items += [(f"setup/prompts/{p.parent.name}/{p.name}", p) for p in sorted(prompts.CUSTOM.glob("*/custom-*.md"))]
         recording = {}
         if telemetry:
             paths, kept = pieces(slim(_records(p for p, _, _ in parts)), tmp)

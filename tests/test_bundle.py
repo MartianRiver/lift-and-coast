@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-from engineer import archive, bundle, capture, radiolog
+from engineer import archive, bundle, capture, prompts, radiolog
 from engineer.spec import PACKETS
 
 
@@ -33,7 +33,8 @@ class Bundle(unittest.TestCase):
                   mock.patch.object(archive, "SESSIONS", self.tmp / "sessions"),
                   mock.patch.object(radiolog, "CLIPS", self.tmp / "radio"),
                   mock.patch.object(radiolog, "LOG", self.tmp / "radio" / "messages.jsonl"),
-                  mock.patch.object(bundle, "FOLDER", self.tmp / "bundles")]:
+                  mock.patch.object(bundle, "FOLDER", self.tmp / "bundles"),
+                  mock.patch.object(prompts, "CUSTOM", self.tmp / "prompts")]:
             p.start()
             self.addCleanup(p.stop)
         for d in ("radio/spoken", "llm", "logs", "sessions"):
@@ -100,6 +101,9 @@ class Bundle(unittest.TestCase):
         (self.tmp / "logs" / "20261017-090000.log").write_text("a run the day before\n")
         (self.tmp / "logs" / "notes.log").write_text("not a run\n")
         (self.tmp / "driver.json").write_text('{"name": "River"}')
+        (self.tmp / "settings.json").write_text('{"prompts": {"lead": "custom-1"}}')
+        (self.tmp / "prompts" / "lead").mkdir(parents=True)
+        (self.tmp / "prompts" / "lead" / "custom-1.md").write_text("---\nwhy: shorter\n---\nYou're the lead.\n")
 
         [z] = bundle.make("7", lap=13, note="said 43%")
         with zipfile.ZipFile(z) as zf:
@@ -108,7 +112,8 @@ class Bundle(unittest.TestCase):
             radio = [json.loads(line) for line in zf.read("radio/messages.jsonl").decode().splitlines()]
             calls = zf.read("models.jsonl").decode()
         self.assertEqual(names, {"manifest.json", "radio/messages.jsonl", f"radio/{clip}", f"radio/spoken/{spoken}",
-                                 "models.jsonl", f"logs/{run}.log", "setup/driver.json", "recording-1.f1cap.xz"})
+                                 "models.jsonl", f"logs/{run}.log", "setup/driver.json", "setup/settings.json",
+                                 "setup/prompts/lead/custom-1.md", "recording-1.f1cap.xz"})
         self.assertEqual([r.get("text") for r in radio], [None, "gap?", "1.2 to Leclerc.", None])
         self.assertIn("1.2 to Leclerc.", calls)
         self.assertNotIn("other", calls)

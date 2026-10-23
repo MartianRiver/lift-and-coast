@@ -60,10 +60,11 @@ def api_key():
 
 
 def stream(model, messages, on_text, effort="low", max_tokens=4000, timeout=60, role="other", at=usage.NOWHERE, why=None,
-           first_by=None):
+           first_by=None, prompt=None):
     """Stream a reply, calling on_text(chunk) as content arrives. -> stats dict. Raises LLMError.
     Every call is recorded with its cost: `role` (engineer, strategist, judge…), `at` = usage.where(state).
-    first_by: seconds to the first word, and the longest the reply may then go quiet, before giving up."""
+    first_by: seconds to the first word, and the longest the reply may then go quiet, before giving up.
+    prompt: the prompt version the messages start with ("engineer/v1"), kept with the call."""
     started, got = time.time(), []
 
     def collect(text):
@@ -73,17 +74,17 @@ def stream(model, messages, on_text, effort="low", max_tokens=4000, timeout=60, 
         stats = _stream(model, messages, collect, effort, max_tokens, timeout, first_by)
     except LLMError as e:
         usage.llm(role, model, at=at, why=why, error=str(e))
-        _keep(started, role, why, at, model, messages, "".join(got), error=str(e))
+        _keep(started, role, why, at, model, messages, "".join(got), prompt, error=str(e))
         raise
     usage.llm(role, model, stats, at, why)
-    _keep(started, role, why, at, model, messages, "".join(got), stats=stats)
+    _keep(started, role, why, at, model, messages, "".join(got), prompt, stats=stats)
     return stats
 
 
-def _keep(started, role, why, at, model, messages, reply, **result):
+def _keep(started, role, why, at, model, messages, reply, prompt, **result):
     if TRACE is None:
         return
-    row = {"at": round(started, 3), "role": role, "why": why, "session": at[0], "model": model,
+    row = {"at": round(started, 3), "role": role, "why": why, "session": at[0], "model": model, "prompt": prompt,
            "messages": messages, "reply": reply, **result}
     try:
         with _trace_lock:

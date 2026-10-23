@@ -23,7 +23,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import archive, brief, driver, llm, log
+from . import archive, brief, driver, llm, log, prompts
 from .calls import Caller
 from .capture import read
 from .engineer import DEFAULT_MODEL, prompt
@@ -217,8 +217,13 @@ def cmd_prep(args):
     print(text or info)
     if not (text and args.run):
         return
+    from .settings import Settings
+
     llm.TRACE = archive.DATA / "llm"  # the race uses this plan, so it's kept like the live calls
-    wall = PitWall(RaceState(Quiet()), Quiet(), args.models.split(","), persist=False)
+    cfg = Settings()  # the models and prompts the Pit wall tab's own "Prepare the race" would use
+    prompts.use(cfg.get("prompts"))
+    models = args.models.split(",") if args.models else [m for m in (cfg.get("lead"), cfg.get("second")) if m]
+    wall = PitWall(RaceState(Quiet()), Quiet(), models, persist=False)
     wall._prepare()
     p = wall.prep
     if p.get("error"):
@@ -325,7 +330,7 @@ def main():
     p.add_argument("--diff", action="store_true")
     p = sub.add_parser("prep")
     p.add_argument("--run", action="store_true", help="ask the team for the plan (saved: the live race picks it up)")
-    p.add_argument("--models", default=",".join(MODELS))
+    p.add_argument("--models", help="lead[,second]; default the Settings tab's")
     for name in ("brief", "ask", "serve", "calls", "triggers", "wall"):
         p = sub.add_parser(name)
         p.add_argument("session")

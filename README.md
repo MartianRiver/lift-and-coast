@@ -54,7 +54,7 @@ While it's held, the server records from the computer's microphone: whichever in
 
 ## Options
 
-Most of what you'd want to change is in the dashboard's Settings tab: the model for the engineer and for each of the strategy team, with what each costs a race, the voice, how much it says unprompted and about what, the team's budget and the radio buttons. A change is used from the next answer or call, and kept in `captures/settings.json`. The same things can be set when starting the server, and anything set that way, or as an `RE_` variable in your environment or `.env`, shows in the tab as locked, with where it's set.
+Most of what you'd want to change is in the dashboard's Settings tab: the model for the engineer and for each of the strategy team, with what each costs a race, the voice, how much it says unprompted and about what, the team's budget and the radio buttons. A change is used from the next answer or call, and kept in `captures/settings.json`. Its Prompts page shows what the engineer, the team lead, the second opinion and race prep are each told, version by version. You can edit any of them: an edit is saved as a new version of your own in `captures/prompts/` with a line on why, the shipped ones stay as they are, and you pick which version each one uses. The same things can be set when starting the server, and anything set that way, or as an `RE_` variable in your environment or `.env`, shows in the tab as locked, with where it's set.
 
 `uv run python -m engineer.server --help` lists everything. The ones you're most likely to want:
 
